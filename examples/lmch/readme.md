@@ -24,8 +24,8 @@ Results
   </tr>
   <tr>
     <td>Result</td>
-    <td>xx</td>
-    <td>xx</td>
+    <td>0.3404</td>
+    <td>0.3120</td>
     <td>0.4723</td>
   </tr>
 </table>
