@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="ggfm",  # 你的包名
+    name="ggfm",  # package name
     version="0.1",
-    packages=find_packages(),  # 自动发现包
+    packages=find_packages(),
     install_requires=['absl-py==2.0.0', 'accelerate==0.25.0', 
                       'aiofiles==23.2.1', 'aiohttp==3.8.4', 
                       'aiosignal==1.3.1', 'alabaster==0.7.13', 
