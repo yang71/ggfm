@@ -16,9 +16,9 @@ wandb.init(mode="disabled")
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Pre-training WalkLM on a given graph (heterogeneous / homogeneous)')
-    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/datasets/', help='The address of data for pretrain.')
-    parser.add_argument('--pretrained_model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/pretrained_model/walklm', help='The save address for the pretrained model.')
-    parser.add_argument('--cuda', type=int, default=1, help='Avaiable GPU ID')      
+    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/datasets/', help='The address of data for pretrain.')
+    parser.add_argument('--pretrained_model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/walklm', help='The save address for the pretrained model.')
+    parser.add_argument('--cuda', type=int, default=1, help='Avaiable GPU ID')
     parser.add_argument('--max_length', type=int, default=512, help='max_length')      
 
 
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     else: device = torch.device("cpu")
 
     # # random walk-based corpus construction
-    # graph = renamed_load(open(args.data_dir, 'rb'))
+    # graph = renamed_load(open(args.data_dir+'graph.pk', 'rb'))
     # construct_link_and_node(graph, args.data_dir)
     # relations = ['publishes in conference', 'publishes in journal', 'publishes in repository', 'publishes in patent',
     #              'conference includes paper', 'journal includes paper', 'repository includes paper', 'patent includes paper',
@@ -40,10 +40,11 @@ if __name__ == "__main__":
     #              'in field L2', 'in field L5', 'in field L4', 'in affiliation',
     #              'has author', 'has last author', 'has middle author', 'has middle author']
     # random_walk_based_corpus_construction(args.data_dir, relations)
+
     datasets = load_dataset("text", data_files={"train": args.data_dir + 'rw_train_corpus.txt', \
                                                 "validation": args.data_dir + 'rw_val_corpus.txt'})
 
-    card = 'distilroberta-base'
+    card = '/home/yjy/heteroPrompt/distilroberta-base'
     tokenizer = AutoTokenizer.from_pretrained(card, use_fast=True)
     model = AutoModelForPreTraining.from_pretrained(card)
 

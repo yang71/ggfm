@@ -6,6 +6,23 @@ from dgl.data.utils import save_graphs, load_graphs
 
 
 def construct_graph(data_dir, graph, src_dst2edge_type):
+    r"""
+
+    Construct dgl.heterograph from ggfm.data.graph.
+
+    Parameters
+    ----------
+    data_dir: str
+        Data directory for saving dgl.heterograph object, which is saved as data_dir/graph.bin.
+
+    graph: class:`ggfm.data.Graph`
+        Target graph.
+    
+    src_dst2edge_type: dict
+        The edge types corresponding to (src, dst) types.
+
+    """
+
     edges = graph.edge_list
 
     single_edges = {}
@@ -70,6 +87,19 @@ def construct_graph(data_dir, graph, src_dst2edge_type):
 
 
 def construct_graph_node_name(data_dir, graph):
+    r"""
+
+    Construct graph_node_name.pkl for ggfm.data.graph.
+
+    Parameters
+    ----------
+    data_dir: str
+        Data directory for saving dgl.heterograph object, which is saved as data_dir/graph_node_name.pkl.
+
+    graph: class:`ggfm.data.Graph`
+        Target graph.
+
+    """
     graph_node_name = {}
     graph_node_type = graph.get_types()
     for i in range(len(graph_node_type)):
@@ -80,6 +110,37 @@ def construct_graph_node_name(data_dir, graph):
 
 
 def metapath_based_corpus_construction(data_dir, target_type, metapaths, relation, mid_types, labeled_node_idxs, k=2):
+
+    r"""
+
+    Metapath-based corpus construction.
+
+    Parameters
+    ----------
+    data_dir: str
+        Data directory for loading graph.bin and graph_node_name.pkl.
+    
+    target_type: str
+        Sampled node type.
+    
+    metapaths: list
+        Sampled metapaths for each node type.
+    
+    relation: list
+        Relations for each node type.
+    
+    mid_types: list
+        Midtypes of each node type's metapaths.
+    
+    labeled_node_idxs: list
+        Sampled node indexes for the target node type.
+    
+    k: int, optional
+        Number of samples retained for each metapath sampling。
+        (default: :obj:`2`)
+
+    """
+
     glist, label_dict = load_graphs(data_dir + "graph.bin")
     g = glist[0]
 

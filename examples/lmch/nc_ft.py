@@ -7,11 +7,12 @@ import argparse
 import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
+import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import f1_score
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import Dataset, DataLoader
-from ggfm.models import Classifier, get_optimizer
+from ggfm.models import Classifier
 from transformers import AutoTokenizer, AutoModel
 from dgl.data.utils import save_graphs, load_graphs
 from transformers.optimization import get_cosine_schedule_with_warmup
@@ -21,6 +22,20 @@ from ggfm.data import renamed_load, construct_graph, construct_graph_node_name, 
 import wandb
 wandb.init(mode="disabled")
 
+
+class LM_Model(nn.Module):
+    def __init__(self, card):
+        super().__init__()
+
+        self.LM = AutoModel.from_pretrained(card)
+
+    def forward(self, tokenized_tensors):
+
+        out = self.LM(output_hidden_states=True, **tokenized_tensors)['hidden_states']
+        embedding = out[-1].mean(dim=1)
+
+        return embedding
+    
 
 class LM_dataset(Dataset):
     def __init__(self, user_text: list, labels: torch.Tensor):
@@ -36,7 +51,7 @@ class LM_dataset(Dataset):
 
     def __len__(self):
         return len(self.user_text)
-    
+
 
 def build_LM_dataloader(batch_size, idx, user_seq, labels, mode):
 
@@ -199,75 +214,71 @@ def nc_load_raw_data(data_dir, graph):
     # new_g = dgl.heterograph(reduced_hg)
     # save_graphs(data_dir + "graph.bin", new_g)
 
-    metapaths = {'paper': [['cites', 'cited by'], ['is writen by', 'writes'], ['published in', 'publishes'], ['is writen by', 'is affiliated with', 'employs', 'writes']],  # ppp, pap, pvp, p-a(author)-a(affiliation)-a(author)-p
-                }
-    relation = {'paper': [['cites', 'cited by'], ['is writen by', 'writes'], ['published in', 'publishes'], ['is writen by', 'is affiliated with', 'employs', 'writes']],
-               }
-    mid_types = {'paper': [['paper'], ['author'], ['venue'], ['author', 'affiliation', 'author']],
-                }
+    # metapaths = {'paper': [['cites', 'cited by'], ['is writen by', 'writes'], ['published in', 'publishes'], ['is writen by', 'is affiliated with', 'employs', 'writes']],  # ppp, pap, pvp, p-a(author)-a(affiliation)-a(author)-p
+    #             }
+    # relation = {'paper': [['cites', 'cited by'], ['is writen by', 'writes'], ['published in', 'publishes'], ['is writen by', 'is affiliated with', 'employs', 'writes']],
+    #            }
+    # mid_types = {'paper': [['paper'], ['author'], ['venue'], ['author', 'affiliation', 'author']],
+    #             }
 
-    train_pairs = open_pkl_file(data_dir+"train_pairs.pkl")
-    valid_pairs = open_pkl_file(data_dir+"valid_pairs.pkl")
-    test_pairs = open_pkl_file(data_dir+"test_pairs.pkl")
+    # train_idxs = open_pkl_file(args.data_dir+"train_ids.pkl")
+    # valid_idxs = open_pkl_file(args.data_dir+"valid_ids.pkl")
+    # test_idxs = open_pkl_file(args.data_dir+"test_ids.pkl")
     
-    train_idxs = list(train_pairs.keys())
-    valid_idxs = list(valid_pairs.keys())
-    test_idxs = list(test_pairs.keys())
-    
-    train_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, train_idxs)
-    valid_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, valid_idxs)
-    test_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, test_idxs)
+    # train_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, train_idxs)
+    # valid_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, valid_idxs)
+    # test_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, test_idxs)
 
-    # random pick 40000 for train, valid, test
-    length = min(40000, len(train_corpus))
+    # # random pick 40000 for train, valid, test
+    # length = min(40000, len(train_corpus))
 
-    train_length = int(length * 0.8)
-    valid_length = int(length * 0.1)
+    # train_length = int(length * 0.8)
+    # valid_length = int(length * 0.1)
 
-    # sampling index for training and validation
-    train_idx = random.sample([i for i in range(len(train_corpus))], train_length)
-    valid_idx = random.sample([i for i in range(len(valid_corpus))], valid_length)
-    test_idx = [i for i in range(len(test_corpus))]
+    # # sampling index for training and validation
+    # train_idx = random.sample([i for i in range(len(train_corpus))], train_length)
+    # valid_idx = random.sample([i for i in range(len(valid_corpus))], valid_length)
+    # test_idx = [i for i in range(len(test_corpus))]
 
 
-    new_data = []
-    train_corpus = np.array(train_corpus)
-    valid_corpus = np.array(valid_corpus)
-    test_corpus = np.array(test_corpus)
-    train_idx, valid_idx, test_idx = np.array(train_idx), np.array(valid_idx), np.array(test_idx)
-    new_data.extend(train_corpus[train_idx].tolist())
-    new_data.extend(valid_corpus[valid_idx].tolist())
-    new_data.extend(test_corpus[test_idx].tolist())
+    # new_data = []
+    # train_corpus = np.array(train_corpus)
+    # valid_corpus = np.array(valid_corpus)
+    # test_corpus = np.array(test_corpus)
+    # train_idx, valid_idx, test_idx = np.array(train_idx), np.array(valid_idx), np.array(test_idx)
+    # new_data.extend(train_corpus[train_idx].tolist())
+    # new_data.extend(valid_corpus[valid_idx].tolist())
+    # new_data.extend(test_corpus[test_idx].tolist())
 
-    new_label_idxs = []
-    train_idxs = np.array(train_idxs)
-    valid_idxs = np.array(valid_idxs)
-    test_idxs = np.array(test_idxs)
-    new_label_idxs.extend(train_idxs[train_idx].tolist())
-    new_label_idxs.extend(valid_idxs[valid_idx].tolist())
-    new_label_idxs.extend(test_idxs[test_idx].tolist())
+    # new_label_idxs = []
+    # train_idxs = np.array(train_idxs)
+    # valid_idxs = np.array(valid_idxs)
+    # test_idxs = np.array(test_idxs)
+    # new_label_idxs.extend(train_idxs[train_idx].tolist())
+    # new_label_idxs.extend(valid_idxs[valid_idx].tolist())
+    # new_label_idxs.extend(test_idxs[test_idx].tolist())
 
-    save_pkl_file(data_dir+"train_idx.pkl", torch.tensor([i for i in range(len(train_idx))]))
-    save_pkl_file(data_dir+"valid_idx.pkl", torch.tensor([i for i in range(len(train_idx),len(train_idx)+len(valid_idx))]))
-    save_pkl_file(data_dir+"test_idx.pkl", torch.tensor([i for i in range(len(train_idx)+len(valid_idx), len(train_idx)+len(valid_idx)+len(test_idx))]))
+    # save_pkl_file(data_dir+"lmch_nc_train_idxs.pkl", torch.tensor([i for i in range(len(train_idx))]))
+    # save_pkl_file(data_dir+"lmch_nc_valid_idxs.pkl", torch.tensor([i for i in range(len(train_idx),len(train_idx)+len(valid_idx))]))
+    # save_pkl_file(data_dir+"lmch_nc_test_idxs.pkl", torch.tensor([i for i in range(len(train_idx)+len(valid_idx), len(train_idx)+len(valid_idx)+len(test_idx))]))
 
-    save_txt_file(data_dir+"sampled_pt_corpus.txt", new_data)
-    save_pkl_file(data_dir+"sampled_pt_labeled_idxs.pkl", new_label_idxs)
+    # save_txt_file(data_dir+"lmch_nc_sampled_pt_corpus.txt", new_data)
+    # save_pkl_file(data_dir+"lmch_nc_sampled_pt_labeled_idxs.pkl", new_label_idxs)
 
-    print("length: ", len(new_data))
-    print("length: ", len(new_label_idxs))
+    # print("length: ", len(new_data))
+    # print("length: ", len(new_label_idxs))
     
 
     # from here...
     print('Loading data...')
-    train_idx = open_pkl_file(data_dir+'train_idx.pkl')
-    valid_idx = open_pkl_file(data_dir+'valid_idx.pkl')
-    test_idx = open_pkl_file(data_dir+'test_idx.pkl')
+    train_idx = open_pkl_file(data_dir+'lmch_nc_train_idxs.pkl')
+    valid_idx = open_pkl_file(data_dir+'lmch_nc_valid_idxs.pkl')
+    test_idx = open_pkl_file(data_dir+'lmch_nc_test_idxs.pkl')
 
-    user_text = open_txt_file(data_dir + "sampled_pt_corpus.txt")
+    user_text = open_txt_file(data_dir + "lmch_nc_sampled_pt_corpus.txt")
     nc_labels = get_nc_labels(graph)
 
-    pt_labeled_idxs = open_pkl_file(data_dir + "sampled_pt_labeled_idxs.pkl")
+    pt_labeled_idxs = open_pkl_file(data_dir + "lmch_nc_sampled_pt_labeled_idxs.pkl")
     
     nc_labels = nc_labels[pt_labeled_idxs, :]
     nc_labels = torch.from_numpy(nc_labels)   # labels tensor & one-hot
@@ -284,16 +295,15 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Fine-Tuning on OAG Paper-Field (L2) classification task')
 
-    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/datasets/', help='The address of preprocessed graph.')
+    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/datasets/', help='The address of preprocessed graph.')
     parser.add_argument('--pretrain_model_dir', type=str, default='/home/yjy/heteroPrompt/distilroberta-base', help='The address for pretrained model.')
-    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
+    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
     parser.add_argument('--task_name', type=str, default='lmch_nc', help='The name of the stored models and optimization results.')
     parser.add_argument('--cuda', type=int, default=0, help='Avaiable GPU ID')
     parser.add_argument('--seed', type=int, default=1)
 
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_length', type=int, default=512)
-    parser.add_argument('--optimizer', type=str, default='adamw', help='optimizer to use.')
     parser.add_argument('--label_smoothing_factor', type=float, default=0)
     parser.add_argument('--warmup', type=float, default=0.6)
     parser.add_argument('--pretrain_epochs', type=float, default=3)
@@ -301,7 +311,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--n_epoch', type=int, default=5, help='Number of epoch to run')
-    parser.add_argument('--clip', type=int, default=0.5, help='Gradient Norm Clipping')
+    parser.add_argument('--clip', type=float, default=0.5, help='Gradient Norm Clipping')
+    parser.add_argument('--eval_patience', type=int, default=20, help='Gradient Norm Clipping')
 
 
     args = parser.parse_args()
@@ -324,14 +335,14 @@ if __name__ == '__main__':
     # build model
     card = args.pretrain_model_dir
     lm_tokenizer = AutoTokenizer.from_pretrained(card)
-    lm_encoder = AutoModel.from_pretrained(card)
+    lm_encoder = LM_Model(card)
     classifier = Classifier(768, output_num)
     model = nn.Sequential(lm_encoder, classifier).to(device)
 
     # train
     print('LM fine-tuning start!')
     optimizer_args = dict(lr=args.lr, weight_decay=args.weight_decay)
-    optimizer = get_optimizer(model.parameters(), args.optimizer, optimizer_args)
+    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_args)
     criterion = CrossEntropyLoss(label_smoothing=args.label_smoothing_factor)
 
     pretrain_steps_per_epoch = train_idx.shape[0] // args.batch_size + 1
@@ -382,6 +393,5 @@ if __name__ == '__main__':
     
     # test
     best_model = torch.load(os.path.join(args.model_dir, args.task_name))
-    model.load_state_dict(best_model)
-    test_losses, test_mi_f1, test_ma_f1 = evaluation(args, device, lm_tokenizer, model, args.batch_size, test_idx, user_seq, hard_labels)
+    test_losses, test_mi_f1, test_ma_f1 = evaluation(args, device, lm_tokenizer, best_model, args.batch_size, test_idx, user_seq, hard_labels)
     print(f"Best Test ACC: {test_mi_f1}")

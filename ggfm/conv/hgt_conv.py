@@ -8,7 +8,39 @@ from torch_geometric.nn.conv import MessagePassing
 
 
 class HGTConv(MessagePassing):
-    def __init__(self, in_dim, out_dim, num_types, num_relations, n_heads, dropout = 0.2, use_norm = True, use_RTE = True, **kwargs):
+
+    r"""The Heterogeneous Graph Transformer (HGT) operator from the
+    `"Heterogeneous Graph Transformer" 
+    <https://arxiv.org/abs/2003.01332>`_ paper.
+
+    Parameters
+    ----------
+    in_dim: int
+        Size of each input sample of every
+        node type, or :obj:`-1` to derive the size from the first input(s)
+        to the forward method.
+    out_dim: int
+        Size of each output sample.
+    num_type: int
+        Number of node types.
+    num_relations: int
+        Number of relations.
+    heads: int, optional
+        Number of multi-head-attentions.
+        (default: :obj:`1`)
+    dropout: float
+        Dropout rate.
+        (default: :obj:`0.2`)
+    use_norm: bool, optional
+        If use norm.
+        (default: :obj:`True`)
+    **kwargs: optional
+        Additional arguments of
+        :class:`torch_geometric.nn.conv.MessagePassing`.
+
+    """
+
+    def __init__(self, in_dim, out_dim, num_types, num_relations, n_heads=1, dropout=0.2, use_norm=True, **kwargs):
         super(HGTConv, self).__init__(node_dim=0, aggr='add', **kwargs)
 
         self.in_dim        = in_dim
@@ -54,13 +86,11 @@ class HGTConv(MessagePassing):
                               edge_type=edge_type, edge_time = edge_time)
 
     def message(self, edge_index_i, node_inp_i, node_inp_j, node_type_i, node_type_j, edge_type, edge_time):
-        '''
-            j: source, i: target; <j, i>
-        '''
+        
+        # j: source, i: target; <j, i>
         data_size = edge_index_i.size(0)
-        '''
-            Create Attention and Message tensor beforehand.
-        '''
+        
+        # Create Attention and Message tensor beforehand.
         res_att     = torch.zeros(data_size, self.n_heads).to(node_inp_i.device)
         res_msg     = torch.zeros(data_size, self.n_heads, self.d_k).to(node_inp_i.device)
         
@@ -72,9 +102,8 @@ class HGTConv(MessagePassing):
                 tb = (node_type_i == int(target_type)) & sb
                 q_linear = self.q_linears[target_type]
                 for relation_type in range(self.num_relations):
-                    '''
-                        idx is all the edges with meta relation <source_type, relation_type, target_type>
-                    '''
+                    
+                    # idx is all the edges with meta relation <source_type, relation_type, target_type>
                     idx = (edge_type == int(relation_type)) & tb
                     if idx.sum() == 0:
                         continue
@@ -97,9 +126,7 @@ class HGTConv(MessagePassing):
                     '''
                     v_mat = v_linear(source_node_vec).view(-1, self.n_heads, self.d_k)
                     res_msg[idx] = torch.bmm(v_mat.transpose(1,0), self.relation_msg[relation_type]).transpose(1,0)   
-        '''
-            Softmax based on target node's id (edge_index_i). Store attention value in self.att for later visualization.
-        '''
+        # Softmax based on target node's id (edge_index_i). Store attention value in self.att for later visualization.
         self.att = softmax(res_att, edge_index_i)
         res = res_msg * self.att.view(-1, self.n_heads, 1)
         del res_att, res_msg
@@ -107,10 +134,7 @@ class HGTConv(MessagePassing):
 
 
     def update(self, aggr_out, node_inp, node_type):
-        '''
-            Step 3: Target-specific Aggregation
-            x = W[node_type] * gelu(Agg(x)) + x
-        '''
+
         aggr_out = F.gelu(aggr_out)
         res = torch.zeros(aggr_out.size(0), self.out_dim).to(node_inp.device)
         for target_type in range(self.num_types):

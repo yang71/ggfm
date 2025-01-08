@@ -3,6 +3,19 @@ from collections import defaultdict
 
 
 def feature_extractor(layer_data, graph):
+    r"""`"GPT-GNN: Generative Pre-Training of Graph Neural Networks"
+    <https://arxiv.org/abs/2006.15437>`_ paper.
+
+    Extract relevent features.
+    
+    Parameters
+    ----------
+    layer_data: dict
+        Sampled node indexes for each node type.
+    graph: class:`ggfm.data.Graph`
+        Target graph.
+    """
+
     feature = {}
     times   = {}
     indxs   = {}
@@ -29,14 +42,32 @@ def feature_extractor(layer_data, graph):
     return feature, times, indxs, attr
 
 
-# inp = {target_type: samp_target_nodes}
-def sample_subgraph(graph, time_range, sampled_depth = 2, sampled_number = 8, inp = None):
-    '''
-        Sample Sub-Graph based on the connection of other nodes with currently sampled nodes
-        We maintain budgets for each node type, indexed by <node_id, time>.
-        Currently sampled nodes are stored in layer_data.
-        After nodes are sampled, we construct the sampled adjacancy matrix.
-    '''
+def sample_subgraph(graph, time_range, sampled_depth = 2, sampled_number = 8, inp=None):
+    
+    r"""`"GPT-GNN: Generative Pre-Training of Graph Neural Networks"
+    <https://arxiv.org/abs/2006.15437>`_ paper.
+
+    Sample Sub-Graph based on the connection of other nodes with currently sampled nodes
+    Budgets are maintained for each node type, indexed by <node_id, time>.
+    Currently sampled nodes are stored in layer_data.
+    After nodes are sampled, the sampled adjacancy matrix are constructed.
+
+    Parameters
+    ----------
+    graph: class:`ggfm.data.Graph`
+        Target graph.
+    time_range: list
+        Time range of target nodes.
+    sampled_depth: int, optional
+        Sampled depth.
+        (default: :obj:`2`)
+    sampled_number: int, optional
+        Sampled number.
+        (default: :obj:`8`)
+    inp: dict
+        Input data for sampling. 
+        `inp = {target_type: samp_target_nodes}`
+    """
     layer_data  = defaultdict( #target_type
                         lambda: {} # {target_id: [ser, time]}
                     )

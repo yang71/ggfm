@@ -1,0 +1,101 @@
++--------------------+---------------------------------------------------------+
+| Parameter          | Value                                                   |
++--------------------+---------------------------------------------------------+
+| data_dir           | /home/yjy/heteroPrompt/ggfm/ggfm/datasets/              |
++--------------------+---------------------------------------------------------+
+| use_pretrain       | True                                                    |
++--------------------+---------------------------------------------------------+
+| pretrain_model_dir | /home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/gta_a |
+|                    | ll_cs3                                                  |
++--------------------+---------------------------------------------------------+
+| model_dir          | /home/yjy/heteroPrompt/ggfm/ggfm/fine_tuned_model       |
++--------------------+---------------------------------------------------------+
+| task_name          | gptgnn_lp                                               |
++--------------------+---------------------------------------------------------+
+| cuda               | 1                                                       |
++--------------------+---------------------------------------------------------+
+| sample_depth       | 6                                                       |
++--------------------+---------------------------------------------------------+
+| sample_width       | 128                                                     |
++--------------------+---------------------------------------------------------+
+| conv_name          | hgt                                                     |
++--------------------+---------------------------------------------------------+
+| n_hid              | 400                                                     |
++--------------------+---------------------------------------------------------+
+| n_heads            | 8                                                       |
++--------------------+---------------------------------------------------------+
+| n_layers           | 3                                                       |
++--------------------+---------------------------------------------------------+
+| prev_norm          | False                                                   |
++--------------------+---------------------------------------------------------+
+| last_norm          | False                                                   |
++--------------------+---------------------------------------------------------+
+| dropout            | 0.200                                                   |
++--------------------+---------------------------------------------------------+
+| scheduler          | cycle                                                   |
++--------------------+---------------------------------------------------------+
+| data_percentage    | 0.100                                                   |
++--------------------+---------------------------------------------------------+
+| n_epoch            | 50                                                      |
++--------------------+---------------------------------------------------------+
+| n_pool             | 8                                                       |
++--------------------+---------------------------------------------------------+
+| n_batch            | 16                                                      |
++--------------------+---------------------------------------------------------+
+| batch_size         | 256                                                     |
++--------------------+---------------------------------------------------------+
+| clip               | 0.500                                                   |
++--------------------+---------------------------------------------------------+
+Load Pre-trained Model from (/home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/gta_all_cs3)
+Epoch: 1  LR: 0.00050 Train Loss: 7.83  Valid Loss: 6.39  Valid NDCG: 0.2123
+Epoch: 2  LR: 0.00049 Train Loss: 6.21  Valid Loss: 6.24  Valid NDCG: 0.2270
+Epoch: 3  LR: 0.00049 Train Loss: 6.07  Valid Loss: 6.24  Valid NDCG: 0.2176
+Epoch: 4  LR: 0.00048 Train Loss: 5.98  Valid Loss: 6.22  Valid NDCG: 0.2295
+Epoch: 5  LR: 0.00047 Train Loss: 5.92  Valid Loss: 5.96  Valid NDCG: 0.2543
+Epoch: 6  LR: 0.00046 Train Loss: 5.81  Valid Loss: 6.02  Valid NDCG: 0.2488
+Epoch: 7  LR: 0.00044 Train Loss: 5.69  Valid Loss: 5.91  Valid NDCG: 0.2461
+Epoch: 8  LR: 0.00042 Train Loss: 5.64  Valid Loss: 5.77  Valid NDCG: 0.2754
+Epoch: 9  LR: 0.00040 Train Loss: 5.58  Valid Loss: 5.75  Valid NDCG: 0.2816
+Epoch: 10  LR: 0.00038 Train Loss: 5.46  Valid Loss: 5.82  Valid NDCG: 0.2769
+Epoch: 11  LR: 0.00036 Train Loss: 5.42  Valid Loss: 5.56  Valid NDCG: 0.2954
+Epoch: 12  LR: 0.00034 Train Loss: 5.34  Valid Loss: 5.63  Valid NDCG: 0.2953
+Epoch: 13  LR: 0.00032 Train Loss: 5.32  Valid Loss: 5.53  Valid NDCG: 0.2962
+Epoch: 14  LR: 0.00029 Train Loss: 5.23  Valid Loss: 5.57  Valid NDCG: 0.2973
+Epoch: 15  LR: 0.00027 Train Loss: 5.18  Valid Loss: 5.33  Valid NDCG: 0.3129
+Epoch: 16  LR: 0.00024 Train Loss: 5.17  Valid Loss: 5.54  Valid NDCG: 0.3016
+Epoch: 17  LR: 0.00022 Train Loss: 5.10  Valid Loss: 5.24  Valid NDCG: 0.3155
+Epoch: 18  LR: 0.00019 Train Loss: 5.04  Valid Loss: 5.44  Valid NDCG: 0.3103
+Epoch: 19  LR: 0.00017 Train Loss: 5.02  Valid Loss: 5.20  Valid NDCG: 0.3307
+Epoch: 20  LR: 0.00014 Train Loss: 5.00  Valid Loss: 5.47  Valid NDCG: 0.3070
+Epoch: 21  LR: 0.00012 Train Loss: 5.00  Valid Loss: 5.48  Valid NDCG: 0.3144
+Epoch: 22  LR: 0.00010 Train Loss: 4.99  Valid Loss: 5.41  Valid NDCG: 0.3129
+Epoch: 23  LR: 0.00008 Train Loss: 4.93  Valid Loss: 5.50  Valid NDCG: 0.3028
+Epoch: 24  LR: 0.00006 Train Loss: 4.93  Valid Loss: 5.37  Valid NDCG: 0.3270
+Epoch: 25  LR: 0.00005 Train Loss: 4.90  Valid Loss: 5.24  Valid NDCG: 0.3244
+Epoch: 26  LR: 0.00003 Train Loss: 4.91  Valid Loss: 5.37  Valid NDCG: 0.3111
+Epoch: 27  LR: 0.00002 Train Loss: 4.90  Valid Loss: 5.50  Valid NDCG: 0.3283
+Epoch: 28  LR: 0.00001 Train Loss: 4.87  Valid Loss: 5.36  Valid NDCG: 0.3200
+Epoch: 29  LR: 0.00001 Train Loss: 4.89  Valid Loss: 5.38  Valid NDCG: 0.3242
+Epoch: 30  LR: 0.00000 Train Loss: 4.86  Valid Loss: 5.42  Valid NDCG: 0.3184
+Epoch: 31  LR: 0.00000 Train Loss: 4.87  Valid Loss: 5.41  Valid NDCG: 0.3249
+Epoch: 32  LR: 0.00000 Train Loss: 4.88  Valid Loss: 5.38  Valid NDCG: 0.3155
+Epoch: 33  LR: 0.00000 Train Loss: 4.84  Valid Loss: 5.39  Valid NDCG: 0.3103
+Epoch: 34  LR: 0.00001 Train Loss: 4.89  Valid Loss: 5.27  Valid NDCG: 0.3366
+Epoch: 35  LR: 0.00002 Train Loss: 4.88  Valid Loss: 5.38  Valid NDCG: 0.3311
+Epoch: 36  LR: 0.00003 Train Loss: 4.85  Valid Loss: 5.50  Valid NDCG: 0.3141
+Epoch: 37  LR: 0.00004 Train Loss: 4.86  Valid Loss: 5.39  Valid NDCG: 0.3350
+Epoch: 38  LR: 0.00006 Train Loss: 4.83  Valid Loss: 5.33  Valid NDCG: 0.3203
+Epoch: 39  LR: 0.00007 Train Loss: 4.84  Valid Loss: 5.46  Valid NDCG: 0.3122
+Epoch: 40  LR: 0.00009 Train Loss: 4.83  Valid Loss: 5.34  Valid NDCG: 0.3143
+Epoch: 41  LR: 0.00011 Train Loss: 4.83  Valid Loss: 5.43  Valid NDCG: 0.3155
+Epoch: 42  LR: 0.00013 Train Loss: 4.80  Valid Loss: 5.38  Valid NDCG: 0.3110
+Epoch: 43  LR: 0.00016 Train Loss: 4.80  Valid Loss: 5.34  Valid NDCG: 0.3108
+Epoch: 44  LR: 0.00018 Train Loss: 4.84  Valid Loss: 5.23  Valid NDCG: 0.3305
+Epoch: 45  LR: 0.00020 Train Loss: 4.78  Valid Loss: 5.12  Valid NDCG: 0.3537
+Epoch: 46  LR: 0.00023 Train Loss: 4.73  Valid Loss: 5.37  Valid NDCG: 0.3150
+Epoch: 47  LR: 0.00025 Train Loss: 4.76  Valid Loss: 5.33  Valid NDCG: 0.3242
+Epoch: 48  LR: 0.00028 Train Loss: 4.75  Valid Loss: 5.31  Valid NDCG: 0.3254
+Epoch: 49  LR: 0.00030 Train Loss: 4.71  Valid Loss: 5.28  Valid NDCG: 0.3322
+Epoch: 50  LR: 0.00033 Train Loss: 4.71  Valid Loss: 5.49  Valid NDCG: 0.3137
+Best Test NDCG: 0.3181
+Best Test MRR:  0.2924

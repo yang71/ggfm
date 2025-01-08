@@ -9,22 +9,39 @@ from gensim.parsing.preprocessing import *
 
 
 class GPT_GNN(nn.Module):
-    def __init__(self, gnn, rem_edge_list, attr_decoder, types, neg_samp_num, device, neg_queue_size = 0):
+    
+    r"""`"GPT-GNN: Generative Pre-Training of Graph Neural Networks"
+    <https://arxiv.org/abs/2006.15437>`_ paper.
+
+    Parameters
+    ----------
+    gnn: class:`ggfm.models`
+        The used GNN model.
+    rem_edge_list: dict
+        The remaining edge list after sampling.
+    attr_decoder: `ggfm.models`
+        Attribute decoder.
+    neg_samp_num: int
+        Maximum number of negative sample for each target node.
+        (default: :obj:`1`)
+    device: int
+        Device
+    neg_queue_size: int, optional
+        Max size of negetive adaptive embedding queue.
+        (default: :obj:`0`)
+
+    """
+
+    def __init__(self, gnn, rem_edge_list, attr_decoder, neg_samp_num, device, neg_queue_size=0):
         super(GPT_GNN, self).__init__()
         if gnn is None:
             return
-        self.types = types
         self.gnn = gnn
         self.params = nn.ModuleList()
         self.neg_queue_size = neg_queue_size
         self.link_dec_dict = {}
         self.neg_queue = {}
-        """
-        rem_edge_list = defaultdict(  #source_type
-                        lambda: defaultdict(  #relation_type
-                            lambda: [] # [target_id, source_id] 
-                                ))
-        """
+
         for source_type in rem_edge_list:
             self.link_dec_dict[source_type] = {}
             self.neg_queue[source_type] = {}
@@ -138,6 +155,16 @@ class GPT_GNN(nn.Module):
 
 
 class Classifier(nn.Module):
+    r"""Classifier for graph node classification task.
+
+    Parameters
+    ----------
+    n_hid: int
+        Input size.
+    n_out: int
+        Output size.
+
+    """
     def __init__(self, n_hid, n_out):
         super(Classifier, self).__init__()
         self.n_hid    = n_hid
@@ -152,12 +179,22 @@ class Classifier(nn.Module):
 
     
 class Matcher(nn.Module):
-    '''
-        Matching between a pair of nodes to conduct link prediction.
+    r"""Matching between a pair of nodes to conduct link prediction.
         Use multi-head attention as matching model.
-    '''
+
+    Parameters
+    ----------
+    n_hid: int
+        Input size.
+    n_out: int
+        Output size.
+    temperature: float, optional
+        Temperature.
+        (default: :obj:`0.1`)
+
+    """
     
-    def __init__(self, n_hid, n_out, temperature = 0.1):
+    def __init__(self, n_hid, n_out, temperature=0.1):
         super(Matcher, self).__init__()
         self.n_hid       = n_hid
         self.linear      = nn.Linear(n_hid,  n_out)
@@ -178,7 +215,12 @@ class Matcher(nn.Module):
 
     
 class HGT(nn.Module):
-    def __init__(self, in_dim, n_hid, num_types, num_relations, n_heads, n_layers, dropout = 0.2, prev_norm = False, last_norm = False, use_RTE = True):
+    r"""The Heterogeneous Graph Transformer (HGT) operator from the
+    `"Heterogeneous Graph Transformer" 
+    <https://arxiv.org/abs/2003.01332>`_ paper.
+    """
+    
+    def __init__(self, in_dim, n_hid, num_types, num_relations, n_heads, n_layers, dropout = 0.2, prev_norm = False, last_norm = False):
         super(HGT, self).__init__()
         self.gcs = nn.ModuleList()
         self.num_types = num_types
@@ -189,8 +231,8 @@ class HGT(nn.Module):
         for t in range(num_types):
             self.adapt_ws.append(nn.Linear(in_dim, n_hid))
         for l in range(n_layers - 1):
-            self.gcs.append(HGTConv(n_hid, n_hid, num_types, num_relations, n_heads, dropout, use_norm = prev_norm, use_RTE = use_RTE))
-        self.gcs.append(HGTConv(n_hid, n_hid, num_types, num_relations, n_heads, dropout, use_norm = last_norm, use_RTE = use_RTE))
+            self.gcs.append(HGTConv(n_hid, n_hid, num_types, num_relations, n_heads, dropout, use_norm = prev_norm))
+        self.gcs.append(HGTConv(n_hid, n_hid, num_types, num_relations, n_heads, dropout, use_norm = last_norm))
 
     def forward(self, node_feature, node_type, edge_time, edge_index, edge_type):
         res = torch.zeros(node_feature.size(0), self.n_hid).to(node_feature.device)
@@ -207,7 +249,24 @@ class HGT(nn.Module):
 
     
 class RNNModel(nn.Module):
-    """Container module with an encoder, a recurrent module, and a decoder."""
+    r"""Container module with an encoder, a recurrent module, and a decoder.
+
+    Parameters
+    ----------
+    n_word: int
+        Number of tokens.
+    ninp: int
+        Input size.
+    nhid: int
+        Hidden size.
+    nlayers: int
+        Layer number of LSTM.
+    dropout: float, optional
+        Dropout rate.
+        (default: :obj:`0.2`)
+
+    """
+
     def __init__(self, n_word, ninp, nhid, nlayers, dropout=0.2):
         super(RNNModel, self).__init__()
         self.drop = nn.Dropout(dropout)

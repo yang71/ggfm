@@ -1,0 +1,286 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ggfm.data.hgsampling &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/introduction.html">Introduction by Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/create_dataset.html">Creating Your Own Datasets</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.models.html">ggfm.models</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ggfm.data.hgsampling</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ggfm.data.hgsampling</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+
+<div class="viewcode-block" id="feature_extractor"><a class="viewcode-back" href="../../../generated/ggfm.data.feature_extractor.html#ggfm.data.feature_extractor">[docs]</a><span class="k">def</span> <span class="nf">feature_extractor</span><span class="p">(</span><span class="n">layer_data</span><span class="p">,</span> <span class="n">graph</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;The Heterogeneous Graph Transformer (HGT) operator from the</span>
+<span class="sd">    `&quot;Heterogeneous Graph Transformer&quot; </span>
+<span class="sd">    &lt;https://arxiv.org/abs/2003.01332&gt;`_ paper.</span>
+
+<span class="sd">    Extract relevent features.</span>
+<span class="sd">    </span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    layer_data: dict</span>
+<span class="sd">        Sampled node indexes for each node type.</span>
+<span class="sd">    graph: class:`ggfm.data.Graph`</span>
+<span class="sd">        Target graph.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">feature</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">times</span>   <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">indxs</span>   <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">texts</span>   <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">_type</span> <span class="ow">in</span> <span class="n">layer_data</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">layer_data</span><span class="p">[</span><span class="n">_type</span><span class="p">])</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">idxs</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">layer_data</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>  <span class="c1">#  origin_indxs</span>
+        <span class="n">tims</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">layer_data</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">()))[:,</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># times</span>
+        
+        <span class="k">if</span> <span class="s1">&#39;node_emb&#39;</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]:</span>
+            <span class="n">feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idxs</span><span class="p">,</span> <span class="s1">&#39;node_emb&#39;</span><span class="p">]),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>  <span class="c1"># intialize as 0</span>
+            <span class="n">feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">idxs</span><span class="p">),</span> <span class="mi">400</span><span class="p">])</span>
+        <span class="c1"># 400, 768, 1</span>
+        <span class="n">feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">feature</span><span class="p">[</span><span class="n">_type</span><span class="p">],</span> <span class="nb">list</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idxs</span><span class="p">,</span> <span class="s1">&#39;emb&#39;</span><span class="p">]),</span>\
+            <span class="n">np</span><span class="o">.</span><span class="n">log10</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idxs</span><span class="p">,</span> <span class="s1">&#39;citation&#39;</span><span class="p">]))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.01</span><span class="p">)),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        
+        <span class="n">times</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span>   <span class="o">=</span> <span class="n">tims</span>
+        <span class="n">indxs</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span>   <span class="o">=</span> <span class="n">idxs</span>
+        
+        <span class="k">if</span> <span class="n">_type</span> <span class="o">==</span> <span class="s1">&#39;paper&#39;</span><span class="p">:</span>
+            <span class="n">attr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">idxs</span><span class="p">,</span> <span class="s1">&#39;title&#39;</span><span class="p">]),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">feature</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">indxs</span><span class="p">,</span> <span class="n">attr</span></div>
+
+
+<div class="viewcode-block" id="sample_subgraph"><a class="viewcode-back" href="../../../generated/ggfm.data.sample_subgraph.html#ggfm.data.sample_subgraph">[docs]</a><span class="k">def</span> <span class="nf">sample_subgraph</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">time_range</span><span class="p">,</span> <span class="n">sampled_depth</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span> <span class="n">sampled_number</span> <span class="o">=</span> <span class="mi">8</span><span class="p">,</span> <span class="n">inp</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;The Heterogeneous Graph Transformer (HGT) operator from the</span>
+<span class="sd">    `&quot;Heterogeneous Graph Transformer&quot; </span>
+<span class="sd">    &lt;https://arxiv.org/abs/2003.01332&gt;`_ paper.</span>
+
+<span class="sd">    Sample Sub-Graph based on the connection of other nodes with currently sampled nodes</span>
+<span class="sd">    Budgets are maintained for each node type, indexed by &lt;node_id, time&gt;.</span>
+<span class="sd">    Currently sampled nodes are stored in layer_data.</span>
+<span class="sd">    After nodes are sampled, the sampled adjacancy matrix are constructed.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    graph: class:`ggfm.data.Graph`</span>
+<span class="sd">        Target graph.</span>
+<span class="sd">    time_range: list</span>
+<span class="sd">        Time range of target nodes.</span>
+<span class="sd">    sampled_depth: int, optional</span>
+<span class="sd">        Sampled depth.</span>
+<span class="sd">        (default: :obj:`2`)</span>
+<span class="sd">    sampled_number: int, optional</span>
+<span class="sd">        Sampled number.</span>
+<span class="sd">        (default: :obj:`8`)</span>
+<span class="sd">    inp: dict</span>
+<span class="sd">        Input data for sampling. </span>
+<span class="sd">        `inp = {target_type: samp_target_nodes}`</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">layer_data</span>  <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span> <span class="c1">#target_type</span>
+                        <span class="k">lambda</span><span class="p">:</span> <span class="p">{}</span> <span class="c1"># {target_id: [ser, time]}</span>
+                    <span class="p">)</span>
+    <span class="n">budget</span>      <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span> <span class="c1">#source_type</span>
+                                    <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>  <span class="c1"># source_id</span>
+                                        <span class="k">lambda</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="c1"># [sampled_score, time]</span>
+                            <span class="p">))</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        For each node being sampled, we find out all its neighborhood, </span>
+<span class="sd">        adding the degree count of these nodes in the budget.</span>
+<span class="sd">        Note that there exist some nodes that have many neighborhoods</span>
+<span class="sd">        (such as fields, venues), for those case, we only consider </span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">add_budget</span><span class="p">(</span><span class="n">te</span><span class="p">,</span> <span class="n">target_id</span><span class="p">,</span> <span class="n">target_time</span><span class="p">,</span> <span class="n">layer_data</span><span class="p">,</span> <span class="n">budget</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">te</span><span class="p">:</span>  <span class="c1"># source_type</span>
+            <span class="n">tes</span> <span class="o">=</span> <span class="n">te</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span>  <span class="c1"># relation</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">tes</span><span class="p">:</span>  <span class="c1"># such as: rev_PV_Conference, rev_PV_Journal</span>
+                <span class="k">if</span> <span class="n">relation_type</span> <span class="o">==</span> <span class="s1">&#39;self&#39;</span> <span class="ow">or</span> <span class="n">target_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tes</span><span class="p">[</span><span class="n">relation_type</span><span class="p">]:</span>
+                    <span class="k">continue</span>
+                <span class="n">adl</span> <span class="o">=</span> <span class="n">tes</span><span class="p">[</span><span class="n">relation_type</span><span class="p">][</span><span class="n">target_id</span><span class="p">]</span>  <span class="c1"># {source_id: year, }</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">adl</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">sampled_number</span><span class="p">:</span>
+                    <span class="n">sampled_ids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">adl</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">sampled_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">adl</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span> <span class="n">sampled_number</span><span class="p">,</span> <span class="n">replace</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">source_id</span> <span class="ow">in</span> <span class="n">sampled_ids</span><span class="p">:</span>
+                    <span class="n">source_time</span> <span class="o">=</span> <span class="n">adl</span><span class="p">[</span><span class="n">source_id</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">source_time</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">source_time</span> <span class="o">=</span> <span class="n">target_time</span>
+                    <span class="k">if</span> <span class="n">source_time</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">time_range</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span> <span class="ow">or</span> <span class="n">source_id</span> <span class="ow">in</span> <span class="n">layer_data</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                        <span class="k">continue</span>
+                    <span class="n">budget</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">source_id</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="mf">1.</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">sampled_ids</span><span class="p">)</span>  <span class="c1"># score</span>
+                    <span class="n">budget</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">source_id</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">source_time</span>  <span class="c1"># time</span>
+
+<span class="w">    </span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        First adding the sampled nodes then updating budget.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="c1"># inp = {target_type: samp_target_nodes}  # inp[&#39;paper&#39;].shape = (batch_size, 2) [[id, year], [id, year], ]</span>
+    <span class="k">for</span> <span class="n">_type</span> <span class="ow">in</span> <span class="n">inp</span><span class="p">:</span>  <span class="c1"># paper</span>
+        <span class="k">for</span> <span class="n">_id</span><span class="p">,</span> <span class="n">_time</span> <span class="ow">in</span> <span class="n">inp</span><span class="p">[</span><span class="n">_type</span><span class="p">]:</span>  <span class="c1"># id transfer</span>
+            <span class="n">layer_data</span><span class="p">[</span><span class="n">_type</span><span class="p">][</span><span class="n">_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">layer_data</span><span class="p">[</span><span class="n">_type</span><span class="p">]),</span> <span class="n">_time</span><span class="p">]</span>  <span class="c1"># id -&gt; cur_length // layer_data: {&#39;paper&#39;: {id: [cur_length, year], }}</span>
+    <span class="k">for</span> <span class="n">_type</span> <span class="ow">in</span> <span class="n">inp</span><span class="p">:</span>  <span class="c1"># sampling nodes for each source type of each target type</span>
+        <span class="n">te</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">_type</span><span class="p">]</span>  <span class="c1"># such as: paper_venue, paper_paper, paper_field, paper_author</span>
+        <span class="k">for</span> <span class="n">_id</span><span class="p">,</span> <span class="n">_time</span> <span class="ow">in</span> <span class="n">inp</span><span class="p">[</span><span class="n">_type</span><span class="p">]:</span>
+            <span class="n">add_budget</span><span class="p">(</span><span class="n">te</span><span class="p">,</span> <span class="n">_id</span><span class="p">,</span> <span class="n">_time</span><span class="p">,</span> <span class="n">layer_data</span><span class="p">,</span> <span class="n">budget</span><span class="p">)</span>
+<span class="w">    </span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        We recursively expand the sampled graph by sampled_depth.</span>
+<span class="sd">        Each time we sample a fixed number of nodes for each budget,</span>
+<span class="sd">        based on the accumulated degree.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">for</span> <span class="n">layer</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">sampled_depth</span><span class="p">):</span>
+        <span class="n">sts</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">budget</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">sts</span><span class="p">:</span>
+            <span class="n">te</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span>
+            <span class="n">keys</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">budget</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+            <span class="k">if</span> <span class="n">sampled_number</span> <span class="o">&gt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">):</span>
+                <span class="n">sampled_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">score</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">budget</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">()))[:,</span><span class="mi">0</span><span class="p">]</span> <span class="o">**</span> <span class="mi">2</span>
+                <span class="n">score</span> <span class="o">=</span> <span class="n">score</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">score</span><span class="p">)</span>
+                <span class="n">sampled_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">score</span><span class="p">),</span> <span class="n">sampled_number</span><span class="p">,</span> <span class="n">p</span> <span class="o">=</span> <span class="n">score</span><span class="p">,</span> <span class="n">replace</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> 
+            <span class="n">sampled_keys</span> <span class="o">=</span> <span class="n">keys</span><span class="p">[</span><span class="n">sampled_ids</span><span class="p">]</span>
+<span class="w">            </span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">                First adding the sampled nodes then updating budget.</span>
+<span class="sd">            &#39;&#39;&#39;</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sampled_keys</span><span class="p">:</span>
+                <span class="n">layer_data</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">layer_data</span><span class="p">[</span><span class="n">source_type</span><span class="p">]),</span> <span class="n">budget</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">k</span><span class="p">][</span><span class="mi">1</span><span class="p">]]</span>  <span class="c1"># layer_data[source_type] {id: [cur_length, time], }</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">sampled_keys</span><span class="p">:</span>
+                <span class="n">add_budget</span><span class="p">(</span><span class="n">te</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">budget</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">k</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span> <span class="n">layer_data</span><span class="p">,</span> <span class="n">budget</span><span class="p">)</span>
+                <span class="n">budget</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+    
+    <span class="c1"># Prepare feature, time and adjacency matrix for the sampled graph, indxs are the origin indexes, texts are the title information of papers</span>
+    <span class="n">feature</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">indxs</span><span class="p">,</span> <span class="n">texts</span> <span class="o">=</span> <span class="n">feature_extractor</span><span class="p">(</span><span class="n">layer_data</span><span class="p">,</span> <span class="n">graph</span><span class="p">)</span>
+            
+    <span class="n">edge_list</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>  <span class="c1"># target_type</span>
+                        <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>  <span class="c1"># source_type</span>
+                            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>  <span class="c1"># relation_type</span>
+                                <span class="k">lambda</span><span class="p">:</span> <span class="p">[]</span> <span class="c1"># [target_id, source_id] </span>
+                                    <span class="p">)))</span>
+    <span class="k">for</span> <span class="n">_type</span> <span class="ow">in</span> <span class="n">layer_data</span><span class="p">:</span>  <span class="c1"># {type: {id: [cur_id, year], }, }</span>
+        <span class="k">for</span> <span class="n">_key</span> <span class="ow">in</span> <span class="n">layer_data</span><span class="p">[</span><span class="n">_type</span><span class="p">]:</span>
+            <span class="n">_ser</span> <span class="o">=</span> <span class="n">layer_data</span><span class="p">[</span><span class="n">_type</span><span class="p">][</span><span class="n">_key</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># cur_id</span>
+            <span class="n">edge_list</span><span class="p">[</span><span class="n">_type</span><span class="p">][</span><span class="n">_type</span><span class="p">][</span><span class="s1">&#39;self&#39;</span><span class="p">]</span> <span class="o">+=</span> <span class="p">[[</span><span class="n">_ser</span><span class="p">,</span> <span class="n">_ser</span><span class="p">]]</span>  <span class="c1"># add self-loop</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Reconstruct sampled adjacancy matrix by checking whether each</span>
+<span class="sd">        link exist in the original graph</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">for</span> <span class="n">target_type</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">:</span>
+        <span class="n">te</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">target_type</span><span class="p">]</span>
+        <span class="n">tld</span> <span class="o">=</span> <span class="n">layer_data</span><span class="p">[</span><span class="n">target_type</span><span class="p">]</span>  <span class="c1"># {type: {id: [cur_id, year], }, }</span>
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">te</span><span class="p">:</span>
+            <span class="n">tes</span> <span class="o">=</span> <span class="n">te</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span>
+            <span class="n">sld</span>  <span class="o">=</span> <span class="n">layer_data</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">tes</span><span class="p">:</span>  <span class="c1"># relation</span>
+                <span class="n">tesr</span> <span class="o">=</span> <span class="n">tes</span><span class="p">[</span><span class="n">relation_type</span><span class="p">]</span>  <span class="c1"># target_id</span>
+                <span class="k">for</span> <span class="n">target_key</span> <span class="ow">in</span> <span class="n">tld</span><span class="p">:</span>  <span class="c1"># sampled target_ids</span>
+                    <span class="k">if</span> <span class="n">target_key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">tesr</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">target_ser</span> <span class="o">=</span> <span class="n">tld</span><span class="p">[</span><span class="n">target_key</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># cur_id</span>
+                    <span class="k">for</span> <span class="n">source_key</span> <span class="ow">in</span> <span class="n">tesr</span><span class="p">[</span><span class="n">target_key</span><span class="p">]:</span>
+                        <span class="c1"># Check whether each link (target_id, source_id) exist in original adjacancy matrix</span>
+                        <span class="k">if</span> <span class="n">source_key</span> <span class="ow">in</span> <span class="n">sld</span><span class="p">:</span>
+                            <span class="n">source_ser</span> <span class="o">=</span> <span class="n">sld</span><span class="p">[</span><span class="n">source_key</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                            <span class="n">edge_list</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">+=</span> <span class="p">[[</span><span class="n">target_ser</span><span class="p">,</span> <span class="n">source_ser</span><span class="p">]]</span>
+    
+    <span class="k">return</span> <span class="n">feature</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">edge_list</span><span class="p">,</span> <span class="n">indxs</span><span class="p">,</span> <span class="n">texts</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

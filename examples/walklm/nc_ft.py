@@ -3,7 +3,7 @@ import torch
 import argparse
 import numpy as np
 import torch.nn as nn
-from ggfm.models import Classifier, get_optimizer
+from ggfm.models import Classifier
 from sklearn.metrics import f1_score
 from transformers import AutoTokenizer, AutoModel
 from ggfm.data import args_print, open_pkl_file, renamed_load, generate_lm_embs
@@ -34,17 +34,16 @@ if __name__ == "__main__":
     '''
         Dataset arguments
     '''
-    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/datasets/', help='The address of preprocessed graph.')
+    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/datasets/', help='The address of preprocessed graph.')
     parser.add_argument('--use_pretrain', type=str, default=True, help='Whether to use pre-trained model')
-    parser.add_argument('--pretrain_model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/pretrained_model/walklm/xyz', help='The address for pretrained model.')
-    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
+    parser.add_argument('--pretrain_model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/walklm/xyz', help='The address for pretrained model.')
+    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
     parser.add_argument('--task_name', type=str, default='walklm_nc', help='The name of the stored models and optimization results.')
-    parser.add_argument('--cuda', type=int, default=0, help='Avaiable GPU ID')
+    parser.add_argument('--cuda', type=int, default=1, help='Avaiable GPU ID')
     parser.add_argument('--n_epoch', type=int, default=5, help='Number of epoch to run')
     parser.add_argument('--batch_size', type=int, default=64, help='Number of output nodes for training')
     parser.add_argument('--target_type', type=str, default='paper', help='target type for training')
     parser.add_argument('--clip', type=int, default=0.5, help='Gradient Norm Clipping')
-    parser.add_argument('--optimizer', type=str, default='adamw', help='optimizer to use.')
 
 
     args = parser.parse_args()
@@ -54,15 +53,36 @@ if __name__ == "__main__":
     else: device = torch.device("cpu")
 
     
-    train_pairs = open_pkl_file(args.data_dir+"train_pairs.pkl")  # paper <- field
-    valid_pairs = open_pkl_file(args.data_dir+"valid_pairs.pkl")
-    test_pairs = open_pkl_file(args.data_dir+"test_pairs.pkl")
+    train_ids = open_pkl_file(args.data_dir+"train_ids.pkl")
+    valid_ids = open_pkl_file(args.data_dir+"valid_ids.pkl")
+    test_ids = open_pkl_file(args.data_dir+"test_ids.pkl")
 
-    train_ids = list(train_pairs.keys())
-    valid_ids = list(valid_pairs.keys())
-    test_ids = list(test_pairs.keys())
+    # load graph
+    graph = renamed_load(open(args.data_dir+'graph.pk', 'rb'))
 
-    graph = renamed_load(open(args.data_dir, 'rb'))
+    # get pairs for labels
+    train_pairs = {}
+    valid_pairs = {}
+    test_pairs  = {}
+    
+    # Prepare all the souce nodes (L2 field) associated with each target node (paper) as dict
+    for target_id in graph.edge_list['paper']['field']['rev_PF_in_L2']:  # paper_id
+        for source_id in graph.edge_list['paper']['field']['rev_PF_in_L2'][target_id]:  # field_id
+            _time = graph.edge_list['paper']['field']['rev_PF_in_L2'][target_id][source_id]  # time
+            if target_id in train_ids:
+                if target_id not in train_pairs:
+                    train_pairs[target_id] = [[], _time]
+                train_pairs[target_id][0] += [source_id]
+
+            elif target_id in valid_ids:
+                if target_id not in valid_pairs:
+                    valid_pairs[target_id] = [[], _time]
+                valid_pairs[target_id][0] += [source_id]
+            else:
+                if target_id not in test_pairs:
+                    test_pairs[target_id]  = [[], _time]
+                test_pairs[target_id][0]  += [source_id]
+
     field_labels = list(graph.node_feature['field']['label'])
     output_num = max(field_labels) + 1  # 11 paper node classification
 
@@ -80,7 +100,7 @@ if __name__ == "__main__":
 
     criterion = nn.KLDivLoss(reduction='batchmean')
     optimizer_args = dict(lr=5e-4)
-    optimizer = get_optimizer(model.parameters(), args.optimizer, optimizer_args)
+    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_args)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500, eta_min=1e-6)
 
     res = []
@@ -91,14 +111,17 @@ if __name__ == "__main__":
     valid_length = len(valid_ids)
     test_length = len(test_ids)
     for epoch in np.arange(args.n_epoch) + 1:
+        print(f"This is epoch {epoch}...")
         model.train()
         train_losses = []
+        print(f"Training begin...")
         for i in range(0, train_length, args.batch_size):
             if i + args.batch_size > train_length: train_idx = train_ids[i:train_length]
             else:  train_idx = train_ids[i:i+args.batch_size]
             
             # generate embs for current batch
             node_rep = generate_lm_embs(all_name, tokenizer, lm_encoder, train_idx, device)
+            node_rep = torch.tensor(node_rep).to(device).float()
             res  = model.forward(node_rep)
             ylabel = generate_nc_labels(graph, train_idx, train_pairs, output_num)
             loss = criterion(res, torch.FloatTensor(ylabel).to(device))
@@ -114,6 +137,7 @@ if __name__ == "__main__":
             scheduler.step(train_step)
             del res, loss
         
+        print(f"Evaluating begin...")
         model.eval()
         valid_losses = []
         with torch.no_grad():
@@ -123,6 +147,7 @@ if __name__ == "__main__":
                 if i + args.batch_size > valid_length: valid_idx = valid_ids[i:valid_length]
                 else:  valid_idx = valid_ids[i:i+args.batch_size]
                 node_rep = generate_lm_embs(all_name, tokenizer, lm_encoder, valid_idx, device)
+                node_rep = torch.tensor(node_rep).to(device).float()
                 res = model.forward(node_rep)
                 ylabel = generate_nc_labels(graph, valid_idx, valid_pairs, output_num)
                 loss = criterion(res, torch.FloatTensor(ylabel).to(device))
@@ -166,6 +191,7 @@ if __name__ == "__main__":
                   (epoch, optimizer.param_groups[0]['lr'], np.average(train_losses), np.average(valid_losses), mi))
         
     # for test
+    print(f"Testing begin...")
     best_model = torch.load(os.path.join(args.model_dir, args.task_name))
     best_model.eval()
     model = best_model
@@ -176,6 +202,7 @@ if __name__ == "__main__":
             if i + args.batch_size > test_length: test_idx = test_ids[i:test_length]
             else:  test_idx = test_ids[i:i+args.batch_size]
             node_rep = generate_lm_embs(all_name, tokenizer, lm_encoder, test_idx, device)
+            node_rep = torch.tensor(node_rep).to(device).float()
             res = model.forward(node_rep)
             ylabel = generate_nc_labels(graph, test_idx, test_pairs, output_num)
 

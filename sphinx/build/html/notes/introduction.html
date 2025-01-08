@@ -1,0 +1,348 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Introduction by Example &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../_static/doctools.js?v=888ff710"></script>
+      <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Creating Your Own Datasets" href="create_dataset.html" />
+    <link rel="prev" title="Installation" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction by Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#data-handling-of-graphs">Data Handling of Graphs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#common-benchmark-datasets">Common Benchmark Datasets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mini-batches">Mini-batches</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="create_dataset.html">Creating Your Own Datasets</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.models.html">ggfm.models</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Introduction by Example</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/notes/introduction.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="introduction-by-example">
+<h1>Introduction by Example<a class="headerlink" href="#introduction-by-example" title="Permalink to this heading">¶</a></h1>
+<p>Following <a class="reference external" href="https://pytorch-geometric.readthedocs.io/en/latest/notes/introduction.html">PyG</a> ,
+we shortly introduce the fundamental concepts of GammaGL through self-contained examples.
+At its core, GammaGL provides the following main features:</p>
+<nav class="contents local" id="contents">
+<ul class="simple">
+<li><p><a class="reference internal" href="#data-handling-of-graphs" id="id1">Data Handling of Graphs</a></p></li>
+<li><p><a class="reference internal" href="#common-benchmark-datasets" id="id2">Common Benchmark Datasets</a></p></li>
+<li><p><a class="reference internal" href="#mini-batches" id="id3">Mini-batches</a></p></li>
+</ul>
+</nav>
+<section id="data-handling-of-graphs">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">Data Handling of Graphs</a><a class="headerlink" href="#data-handling-of-graphs" title="Permalink to this heading">¶</a></h2>
+<p>A graph is used to model pairwise relations (edges) between objects (nodes).
+A single graph in GammaGL is described by an instance of <code class="xref py py-class docutils literal notranslate"><span class="pre">gammagl.data.Graph</span></code>, which holds the following attributes by default:</p>
+<ul class="simple">
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">Graph.x</span></code>: Node feature matrix with shape <code class="xref py py-obj docutils literal notranslate"><span class="pre">[num_nodes,</span> <span class="pre">num_node_features]</span></code></p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">Graph.edge_index</span></code>: Graph connectivity in COO format with shape <code class="xref py py-obj docutils literal notranslate"><span class="pre">[2,</span> <span class="pre">num_edges]</span></code> and type <code class="xref py py-obj docutils literal notranslate"><span class="pre">int64</span></code></p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">Graph.edge_attr</span></code>: Edge feature matrix with shape <code class="xref py py-obj docutils literal notranslate"><span class="pre">[num_edges,</span> <span class="pre">num_edge_features]</span></code></p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">Graph.y</span></code>: Target to train against (may have arbitrary shape), <em>e.g.</em>, node-level targets of shape <code class="xref py py-obj docutils literal notranslate"><span class="pre">[num_nodes,</span> <span class="pre">*]</span></code> or graph-level targets of shape <code class="xref py py-obj docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">*]</span></code></p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">Graph.pos</span></code>: Node position matrix with shape <code class="xref py py-obj docutils literal notranslate"><span class="pre">[num_nodes,</span> <span class="pre">num_dimensions]</span></code></p></li>
+</ul>
+<p>None of these attributes are required.
+In fact, the <code class="xref py py-class docutils literal notranslate"><span class="pre">Graph</span></code> object is not even restricted to these attributes.
+We can, <em>e.g.</em>, extend it by <code class="xref py py-obj docutils literal notranslate"><span class="pre">Graph.face</span></code> to save the connectivity of triangles from a 3D mesh in a tensor with shape <code class="xref py py-obj docutils literal notranslate"><span class="pre">[3,</span> <span class="pre">num_faces]</span></code> and type <code class="xref py py-obj docutils literal notranslate"><span class="pre">int64</span></code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>PyTorch and <code class="xref py py-obj docutils literal notranslate"><span class="pre">torchvision</span></code> define an example as a tuple of an image and a target.
+We omit this notation in GammaGL to allow for various data structures in a clean and understandable way.</p>
+</div>
+<p>We show a simple example of an unweighted and undirected graph with three nodes and four edges.
+Each node contains exactly one feature:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">tensorlayerx</span> <span class="k">as</span> <span class="nn">tlx</span>
+<span class="kn">from</span> <span class="nn">gammagl.data</span> <span class="kn">import</span> <span class="n">Graph</span>
+
+<span class="n">edge_index</span> <span class="o">=</span> <span class="n">tlx</span><span class="o">.</span><span class="n">convert_to_tensor</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+                           <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">tlx</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">tlx</span><span class="o">.</span><span class="n">convert_to_tensor</span><span class="p">([[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">tlx</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+<span class="n">graph</span> <span class="o">=</span> <span class="n">Graph</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">edge_index</span><span class="o">=</span><span class="n">edge_index</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">Graph</span><span class="p">(</span><span class="n">edge_index</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="_figures/graph.svg"><img alt="_figures/graph.svg" class="align-center" src="_figures/graph.svg" width="300px" /></a>
+<p>Although the graph has only two edges, we need to define four index tuples to account for both directions of a edge.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>You can print out your data object anytime and receive a short information about its attributes and their shapes.</p>
+</div>
+<p>Besides holding a number of node-level, edge-level or graph-level attributes, <code class="xref py py-class docutils literal notranslate"><span class="pre">Graph</span></code> provides a number of useful utility functions, <em>e.g.</em>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">keys</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">,</span> <span class="s1">&#39;edge_index&#39;</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">graph</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">])</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">tensor</span><span class="p">([[</span><span class="o">-</span><span class="mf">1.0</span><span class="p">],</span>
+            <span class="p">[</span><span class="mf">0.0</span><span class="p">],</span>
+            <span class="p">[</span><span class="mf">1.0</span><span class="p">]])</span>
+
+<span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">graph</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s1"> found in data&#39;</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="ne">KeyError</span><span class="p">:</span> <span class="mi">0</span>
+<span class="c1">#  Note that &lt;class &#39;gammagl.data.graph.Graph&#39;&gt; can not be an iteratable object, or raise error in Paddle.save.</span>
+
+<span class="s1">&#39;edge_attr&#39;</span> <span class="ow">in</span> <span class="n">graph</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kc">False</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">num_nodes</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">3</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">num_edges</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">4</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">num_node_features</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">1</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">has_isolated_nodes</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kc">False</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">has_self_loops</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kc">False</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">is_directed</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kc">False</span>
+</pre></div>
+</div>
+<p>You can find a complete list of all methods at <code class="xref py py-class docutils literal notranslate"><span class="pre">gammagl.data.Graph</span></code>.</p>
+</section>
+<section id="common-benchmark-datasets">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Common Benchmark Datasets</a><a class="headerlink" href="#common-benchmark-datasets" title="Permalink to this heading">¶</a></h2>
+<p>Gammagl will contain a large number of common benchmark datasets, <em>e.g.</em>, all Planetoid datasets (Cora, Citeseer, Pubmed), all graph classification datasets from <a class="reference external" href="http://graphkernels.cs.tu-dortmund.de/">http://graphkernels.cs.tu-dortmund.de</a> and their <a class="reference external" href="https://github.com/nd7141/graph_datasets">cleaned versions</a>, the QM7 and QM9 dataset, and a handful of 3D mesh/point cloud datasets like FAUST, ModelNet10/40 and ShapeNet.</p>
+<p>Initializing a dataset is straightforward.
+An initialization of a dataset will automatically download its raw files and process them to the previously described <code class="xref py py-class docutils literal notranslate"><span class="pre">Data</span></code> format.
+<em>E.g.</em>, to load the ENZYMES dataset (consisting of 600 graphs within 6 classes), type:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">gammagl.datasets</span> <span class="kn">import</span> <span class="n">TUDataset</span>
+
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">TUDataset</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s1">&#39;/tmp/ENZYMES&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;ENZYMES&#39;</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">ENZYMES</span><span class="p">(</span><span class="mi">600</span><span class="p">)</span>
+
+<span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">600</span>
+
+<span class="n">dataset</span><span class="o">.</span><span class="n">num_classes</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">6</span>
+
+<span class="n">dataset</span><span class="o">.</span><span class="n">num_node_features</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">3</span>
+</pre></div>
+</div>
+<p>We now have access to all 600 graphs in the dataset:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">graph</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">Graph</span><span class="p">(</span><span class="n">edge_index</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">168</span><span class="p">],</span> <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">37</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">y</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">is_undirected</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kc">True</span>
+</pre></div>
+</div>
+<p>We can see that the first graph in the dataset contains 37 nodes, each one having 3 features.
+There are 168/2 = 84 undirected edges and the graph is assigned to exactly one class.
+In addition, the data object is holding exactly one graph-level target.</p>
+<p>We can even use slices, long or bool tensors to split the dataset.
+<em>E.g.</em>, to create a 90/10 train/test split, type:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">train_dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[:</span><span class="mi">540</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">ENZYMES</span><span class="p">(</span><span class="mi">540</span><span class="p">)</span>
+
+<span class="n">test_dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">540</span><span class="p">:]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">ENZYMES</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>If you are unsure whether the dataset is already shuffled before you split, you can randomly permutate it by running:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">shuffle</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">ENZYMES</span><span class="p">(</span><span class="mi">600</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This is equivalent of doing:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">))</span>
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="n">perm</span><span class="p">]</span>
+<span class="o">&gt;&gt;</span> <span class="n">ENZYMES</span><span class="p">(</span><span class="mi">600</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Let’s try another one! Let’s download Cora, the standard benchmark dataset for semi-supervised graph node classification:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">gammagl.datasets</span> <span class="kn">import</span> <span class="n">Planetoid</span>
+
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">Planetoid</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s1">&#39;/tmp/Cora&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;Cora&#39;</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">Cora</span><span class="p">()</span>
+
+<span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">1</span>
+
+<span class="n">dataset</span><span class="o">.</span><span class="n">num_classes</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">7</span>
+
+<span class="n">dataset</span><span class="o">.</span><span class="n">num_node_features</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">1433</span>
+</pre></div>
+</div>
+<p>Here, the dataset contains only a single, undirected citation graph:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">graph</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="n">Graph</span><span class="p">(</span><span class="n">edge_index</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">10556</span><span class="p">],</span> <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">2708</span><span class="p">,</span> <span class="mi">1433</span><span class="p">],</span> <span class="n">y</span><span class="o">=</span><span class="p">[</span><span class="mi">2708</span><span class="p">],</span> <span class="n">train_mask</span><span class="o">=</span><span class="p">[</span><span class="mi">2708</span><span class="p">],</span> <span class="n">val_mask</span><span class="o">=</span><span class="p">[</span><span class="mi">2708</span><span class="p">],</span> <span class="n">test_mask</span><span class="o">=</span><span class="p">[</span><span class="mi">2708</span><span class="p">])</span>
+
+<span class="n">graph</span><span class="o">.</span><span class="n">is_undirected</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="kc">True</span>
+
+<span class="n">tlx</span><span class="o">.</span><span class="n">convert_to_numpy</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">train_mask</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">140</span>
+
+<span class="n">tlx</span><span class="o">.</span><span class="n">convert_to_numpy</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">val_mask</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">500</span>
+
+<span class="n">tlx</span><span class="o">.</span><span class="n">convert_to_numpy</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">test_mask</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+<span class="o">&gt;&gt;&gt;</span> <span class="mi">1000</span>
+</pre></div>
+</div>
+<p>This time, the <code class="xref py py-class docutils literal notranslate"><span class="pre">Graph</span></code> objects holds a label for each node, and additional node-level attributes: <code class="xref py py-obj docutils literal notranslate"><span class="pre">train_mask</span></code>, <code class="xref py py-obj docutils literal notranslate"><span class="pre">val_mask</span></code> and <code class="xref py py-obj docutils literal notranslate"><span class="pre">test_mask</span></code>, where</p>
+<ul class="simple">
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">train_mask</span></code> denotes against which nodes to train (140 nodes),</p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">val_mask</span></code> denotes which nodes to use for validation, <em>e.g.</em>, to perform early stopping (500 nodes),</p></li>
+<li><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">test_mask</span></code> denotes against which nodes to test (1000 nodes).</p></li>
+</ul>
+</section>
+<section id="mini-batches">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">Mini-batches</a><a class="headerlink" href="#mini-batches" title="Permalink to this heading">¶</a></h2>
+<p>Neural networks are usually trained in a batch-wise fashion.
+GammaGL achieves parallelization over a mini-batch by creating sparse block diagonal adjacency matrices (defined by <code class="xref py py-obj docutils literal notranslate"><span class="pre">edge_index</span></code>) and concatenating feature and target matrices in the node dimension.
+This composition allows differing number of nodes and edges over examples in one batch:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\mathbf{A} = \begin{bmatrix} \mathbf{A}_1 &amp; &amp; \\ &amp; \ddots &amp; \\ &amp; &amp; \mathbf{A}_n \end{bmatrix}, \qquad \mathbf{X} = \begin{bmatrix} \mathbf{X}_1 \\ \vdots \\ \mathbf{X}_n \end{bmatrix}, \qquad \mathbf{Y} = \begin{bmatrix} \mathbf{Y}_1 \\ \vdots \\ \mathbf{Y}_n \end{bmatrix}\end{split}\]</div>
+<p>GammaGL contains its own <code class="xref py py-class docutils literal notranslate"><span class="pre">gammagl.loader.DataLoader</span></code>, which already takes care of this concatenation process.
+Let’s learn about it in an example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">gammagl.datasets</span> <span class="kn">import</span> <span class="n">TUDataset</span>
+<span class="kn">from</span> <span class="nn">gammagl.loader.dataloader</span> <span class="kn">import</span> <span class="n">DataLoader</span>
+
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">TUDataset</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s1">&#39;/tmp/ENZYMES&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;ENZYMES&#39;</span><span class="p">,</span> <span class="n">use_node_attr</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+    <span class="n">batch</span>
+    <span class="o">&gt;&gt;&gt;</span> <span class="n">GraphBatch</span><span class="p">(</span><span class="n">edge_index</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3806</span><span class="p">],</span> <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1096</span><span class="p">,</span> <span class="mi">21</span><span class="p">],</span> <span class="n">y</span><span class="o">=</span><span class="p">[</span><span class="mi">32</span><span class="p">],</span> <span class="n">batch</span><span class="o">=</span><span class="p">[</span><span class="mi">1096</span><span class="p">],</span> <span class="n">ptr</span><span class="o">=</span><span class="p">[</span><span class="mi">33</span><span class="p">])</span>
+
+    <span class="n">batch</span><span class="o">.</span><span class="n">num_graphs</span>
+    <span class="o">&gt;&gt;&gt;</span> <span class="mi">32</span>
+</pre></div>
+</div>
+<p><code class="xref py py-class docutils literal notranslate"><span class="pre">gammagl.data.BatchGraph</span></code> inherits from <code class="xref py py-class docutils literal notranslate"><span class="pre">gammagl.data.Graph</span></code> and contains an additional attribute called <code class="xref py py-obj docutils literal notranslate"><span class="pre">batch</span></code>.</p>
+<p><code class="xref py py-obj docutils literal notranslate"><span class="pre">batch</span></code> is a column vector which maps each node to its respective graph in the batch:</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{batch} = {\begin{bmatrix} 0 &amp; \cdots &amp; 0 &amp; 1 &amp; \cdots &amp; n - 2 &amp; n -1 &amp; \cdots &amp; n - 1 \end{bmatrix}}^{\top}\]</div>
+<p>You can use it to, <em>e.g.</em>, average node features in the node dimension for each graph individually:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">gammagl.mpops</span> <span class="kn">import</span> <span class="n">unsorted_segment_mean</span>
+<span class="kn">from</span> <span class="nn">gammagl.datasets</span> <span class="kn">import</span> <span class="n">TUDataset</span>
+<span class="kn">from</span> <span class="nn">gammagl.loader.dataloader</span> <span class="kn">import</span> <span class="n">DataLoader</span>
+
+<span class="n">dataset</span> <span class="o">=</span> <span class="n">TUDataset</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s1">&#39;/tmp/ENZYMES&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;ENZYMES&#39;</span><span class="p">,</span> <span class="n">use_node_attr</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+    <span class="n">data</span>
+    <span class="o">&gt;&gt;&gt;</span> <span class="n">DataBatch</span><span class="p">(</span><span class="n">batch</span><span class="o">=</span><span class="p">[</span><span class="mi">1082</span><span class="p">],</span> <span class="n">edge_index</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4066</span><span class="p">],</span> <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1082</span><span class="p">,</span> <span class="mi">21</span><span class="p">],</span> <span class="n">y</span><span class="o">=</span><span class="p">[</span><span class="mi">32</span><span class="p">])</span>
+
+    <span class="n">data</span><span class="o">.</span><span class="n">num_graphs</span>
+    <span class="o">&gt;&gt;&gt;</span> <span class="mi">32</span>
+
+    <span class="n">x</span> <span class="o">=</span> <span class="n">unsorted_segment_mean</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">batch</span><span class="p">)</span>
+    <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+    <span class="o">&gt;&gt;&gt;</span> <span class="n">TensorShape</span><span class="p">([</span><span class="mi">32</span><span class="p">,</span> <span class="mi">21</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>You can learn more about the internal batching procedure of GammaGL, <em>e.g.</em>, how to modify its behaviour, <a class="reference external" href="https://gammagl.readthedocs.io/en/latest/notes/batching.html">here</a>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="create_dataset.html" class="btn btn-neutral float-right" title="Creating Your Own Datasets" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

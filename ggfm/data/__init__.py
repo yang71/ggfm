@@ -7,7 +7,6 @@ from .metapath import construct_graph, construct_graph_node_name, metapath_based
 
 __all__ = [
     'Graph',
-    # 'RenameUnpickler',
     'sample_subgraph',
     'open_pkl_file',
     'open_txt_file',

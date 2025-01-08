@@ -3,6 +3,29 @@ import numpy as np
 
 
 def generate_lm_embs(all_name, tokenizer, model, indxs, device):
+    r"""
+
+    Language model generates node embeddings for words。
+
+    Parameters
+    ----------
+    all_name: list
+        Words list.
+
+    tokenizer: 
+        LM tokenizer.
+    
+    model: 
+        Language model.
+    
+    indxs: list
+        Index positions of generated node embeddings.
+    
+    device: int
+        Device.
+
+
+    """
 
     def get_word_embeddings(word, device):
         encoded_word = tokenizer.encode(word, add_special_tokens=False)
@@ -15,8 +38,9 @@ def generate_lm_embs(all_name, tokenizer, model, indxs, device):
     emb = get_word_embeddings("hello", device)
     emb = np.zeros((len(indxs), len(emb)))
 
-    for i in range(len(all_name)):
-        word = all_name[i]
+    for i in range(len(indxs)):
+        cur = indxs[i]
+        word = all_name[cur]
         emb[i] = get_word_embeddings(word, device)
 
     return emb

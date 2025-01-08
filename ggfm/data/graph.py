@@ -3,6 +3,16 @@ from collections import defaultdict
 
 
 class Graph():
+    r"""The Heterogeneous Graph Transformer (HGT) operator from the
+    `"Heterogeneous Graph Transformer" 
+    <https://arxiv.org/abs/2003.01332>`_ paper.
+    
+    A Graph object describe a homogeneous/heterogeneous graph. 
+    The node-related information is included in node_feature: a DataFrame containing all features
+    The link-related information is included in edge_list: index the adjacancy matrix (time) by 
+        <target_type, source_type, relation_type, target_id, source_id>
+    """
+
     def __init__(self):
         super(Graph, self).__init__()
         '''
@@ -78,4 +88,7 @@ class RenameUnpickler(dill.Unpickler):
 
 
 def renamed_load(file_obj):
+    r"""
+        Load Graph object.
+    """
     return RenameUnpickler(file_obj).load()

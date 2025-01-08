@@ -8,10 +8,10 @@ import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
 import torch.nn.functional as F
+from ggfm.models import Classifier
 from sklearn.metrics import f1_score
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import Dataset, DataLoader
-from ggfm.models import Classifier, get_optimizer
 from transformers import AutoTokenizer, AutoModel
 from dgl.data.utils import save_graphs, load_graphs
 from transformers.optimization import get_cosine_schedule_with_warmup
@@ -21,6 +21,20 @@ from ggfm.data import renamed_load, construct_graph, construct_graph_node_name, 
 import wandb
 wandb.init(mode="disabled")
 
+
+class LM_Model(nn.Module):
+    def __init__(self, card):
+        super().__init__()
+
+        self.LM = AutoModel.from_pretrained(card)
+
+    def forward(self, tokenized_tensors):
+
+        out = self.LM(output_hidden_states=True, **tokenized_tensors)['hidden_states']
+        embedding = out[-1].mean(dim=1)
+
+        return embedding
+    
 
 class LM_dataset(Dataset):
     def __init__(self, user_text: list, labels: torch.Tensor):
@@ -187,13 +201,9 @@ def lp_load_raw_data(data_dir, graph):
     # mid_types = {'paper': [['paper'], ['author'], ['venue'], ['author', 'affiliation', 'author']],
     #             }
 
-    # train_pairs = open_pkl_file(data_dir+"train_pairs.pkl")
-    # valid_pairs = open_pkl_file(data_dir+"valid_pairs.pkl")
-    # test_pairs = open_pkl_file(data_dir+"test_pairs.pkl")
-    
-    # train_idxs = list(train_pairs.keys())
-    # valid_idxs = list(valid_pairs.keys())
-    # test_idxs = list(test_pairs.keys())
+    # train_idxs = open_pkl_file(args.data_dir+"train_ids.pkl")
+    # valid_idxs = open_pkl_file(args.data_dir+"valid_ids.pkl")
+    # test_idxs = open_pkl_file(args.data_dir+"test_ids.pkl")
     
     # train_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, train_idxs)
     # valid_corpus = metapath_based_corpus_construction(data_dir, 'paper', metapaths, relation, mid_types, valid_idxs)
@@ -228,12 +238,12 @@ def lp_load_raw_data(data_dir, graph):
     # new_label_idxs.extend(valid_idxs[valid_idx].tolist())
     # new_label_idxs.extend(test_idxs[test_idx].tolist())
 
-    # save_pkl_file(data_dir+"train_idx.pkl", torch.tensor([i for i in range(len(train_idx))]))
-    # save_pkl_file(data_dir+"valid_idx.pkl", torch.tensor([i for i in range(len(train_idx),len(train_idx)+len(valid_idx))]))
-    # save_pkl_file(data_dir+"test_idx.pkl", torch.tensor([i for i in range(len(train_idx)+len(valid_idx), len(train_idx)+len(valid_idx)+len(test_idx))]))
+    # save_pkl_file(data_dir+"lmch_lp_train_idxs.pkl", torch.tensor([i for i in range(len(train_idx))]))
+    # save_pkl_file(data_dir+"lmch_lp_valid_idxs.pkl", torch.tensor([i for i in range(len(train_idx),len(train_idx)+len(valid_idx))]))
+    # save_pkl_file(data_dir+"lmch_lp_test_idxs.pkl", torch.tensor([i for i in range(len(train_idx)+len(valid_idx), len(train_idx)+len(valid_idx)+len(test_idx))]))
 
-    # save_txt_file(data_dir+"sampled_pt_corpus.txt", new_data)
-    # save_pkl_file(data_dir+"sampled_pt_labeled_idxs.pkl", new_label_idxs)
+    # save_txt_file(data_dir+"lmch_lp_sampled_pt_corpus.txt", new_data)
+    # save_pkl_file(data_dir+"lmch_lp_sampled_pt_labeled_idxs.pkl", new_label_idxs)
 
     # print("length: ", len(new_data))
     # print("length: ", len(new_label_idxs))
@@ -241,14 +251,14 @@ def lp_load_raw_data(data_dir, graph):
 
     # from here...
     print('Loading data...')
-    train_idx = open_pkl_file(data_dir+'train_idx.pkl')
-    valid_idx = open_pkl_file(data_dir+'valid_idx.pkl')
-    test_idx = open_pkl_file(data_dir+'test_idx.pkl')
+    train_idx = open_pkl_file(data_dir+'lmch_lp_train_idxs.pkl')
+    valid_idx = open_pkl_file(data_dir+'lmch_lp_valid_idxs.pkl')
+    test_idx = open_pkl_file(data_dir+'lmch_lp_test_idxs.pkl')
 
-    user_text = open_txt_file(data_dir + "sampled_pt_corpus.txt")
+    user_text = open_txt_file(data_dir + "lmch_lp_sampled_pt_corpus.txt")
     lp_labels = get_lp_labels(graph)
 
-    pt_labeled_idxs = open_pkl_file(data_dir + "sampled_pt_labeled_idxs.pkl")
+    pt_labeled_idxs = open_pkl_file(data_dir + "lmch_lp_sampled_pt_labeled_idxs.pkl")
     
     lp_labels = lp_labels[pt_labeled_idxs, :]
     lp_labels = torch.from_numpy(lp_labels)   # labels tensor & one-hot
@@ -265,16 +275,15 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Fine-Tuning on OAG Paper-Field (L2) classification task')
 
-    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/datasets/', help='The address of preprocessed graph.')
+    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/datasets/', help='The address of preprocessed graph.')
     parser.add_argument('--pretrain_model_dir', type=str, default='/home/yjy/heteroPrompt/distilroberta-base', help='The address for pretrained model.')
-    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
+    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
     parser.add_argument('--task_name', type=str, default='lmch_lp', help='The name of the stored models and optimization results.')
     parser.add_argument('--cuda', type=int, default=0, help='Avaiable GPU ID')
     parser.add_argument('--seed', type=int, default=1)
 
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--max_length', type=int, default=512)
-    parser.add_argument('--optimizer', type=str, default='adamw', help='optimizer to use.')
     parser.add_argument('--label_smoothing_factor', type=float, default=0)
     parser.add_argument('--warmup', type=float, default=0.6)
     parser.add_argument('--pretrain_epochs', type=float, default=3)
@@ -282,7 +291,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-5)
     parser.add_argument('--weight_decay', type=float, default=0.01)
     parser.add_argument('--n_epoch', type=int, default=5, help='Number of epoch to run')
-    parser.add_argument('--clip', type=int, default=0.5, help='Gradient Norm Clipping')
+    parser.add_argument('--clip', type=float, default=0.5, help='Gradient Norm Clipping')
+    parser.add_argument('--eval_patience', type=int, default=20, help='Gradient Norm Clipping')
 
 
     args = parser.parse_args()
@@ -305,14 +315,14 @@ if __name__ == '__main__':
     # build model
     card = args.pretrain_model_dir
     lm_tokenizer = AutoTokenizer.from_pretrained(card)
-    lm_encoder = AutoModel.from_pretrained(card)
+    lm_encoder = LM_Model(card)
     classifier = Classifier(768, output_num)
     model = nn.Sequential(lm_encoder, classifier).to(device)
 
     # train
     print('LM fine-tuning start!')
     optimizer_args = dict(lr=args.lr, weight_decay=args.weight_decay)
-    optimizer = get_optimizer(model.parameters(), args.optimizer, optimizer_args)
+    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_args)
     criterion = CrossEntropyLoss(label_smoothing=args.label_smoothing_factor)
 
     pretrain_steps_per_epoch = train_idx.shape[0] // args.batch_size + 1
@@ -363,7 +373,6 @@ if __name__ == '__main__':
     
     # test
     best_model = torch.load(os.path.join(args.model_dir, args.task_name))
-    model.load_state_dict(best_model)
-    test_losses, test_ndcg, test_mrr = evaluation(args, device, lm_tokenizer, model, args.batch_size, test_idx, user_seq, hard_labels)
+    test_losses, test_ndcg, test_mrr = evaluation(args, device, lm_tokenizer, best_model, args.batch_size, test_idx, user_seq, hard_labels)
     print('Best Test NDCG: %.4f' % test_ndcg)
     print('Best Test MRR:  %.4f' % test_mrr)

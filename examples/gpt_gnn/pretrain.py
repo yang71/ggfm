@@ -152,13 +152,13 @@ if __name__ == '__main__':
     parser.add_argument('--attr_type', type=str, default='text', choices=['text', 'vec'], help='The type of attribute decoder')
     parser.add_argument('--neg_samp_num', type=int, default=255, help='Maximum number of negative sample for each target node.')
     parser.add_argument('--queue_size', type=int, default=256, help='Max size of adaptive embedding queue.')
-    parser.add_argument('--w2v_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/pretrained_model/w2v_all', help='The address of w2v_model.')
+    parser.add_argument('--w2v_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/w2v_all', help='The address of w2v_model.')
 
     '''
         Dataset arguments
     '''
-    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/datasets/graph.pk', help='The address of data for pretrain.')
-    parser.add_argument('--pretrained_model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/pretrained_model/gta_all_cs3', help='The save address for the pretrained model.')
+    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/datasets/graph.pk', help='The address of data for pretrain.')
+    parser.add_argument('--pretrained_model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/gta_all_cs3', help='The save address for the pretrained model.')
     parser.add_argument('--cuda', type=int, default=1, help='Avaiable GPU ID')      
     parser.add_argument('--sample_depth', type=int, default=6, help='How many layers within a mini-batch subgraph')
     parser.add_argument('--sample_width', type=int, default=128, help='How many nodes to be sampled per layer per type')
@@ -177,7 +177,6 @@ if __name__ == '__main__':
     '''
         Optimization arguments
     '''
-    parser.add_argument('--optimizer', type=str, default='adamw', help='optimizer to use.')
     parser.add_argument('--max_lr', type=float, default=1e-3, help='Maximum learning rate.')
     parser.add_argument('--scheduler', type=str, default='cycle', help='Name of learning rate scheduler.' , choices=['cycle', 'cosine'])
     parser.add_argument('--n_epoch', type=int, default=20, help='Number of epoch to run')
@@ -246,7 +245,7 @@ if __name__ == '__main__':
     train_step = 0
     stats = []
     optimizer_args = dict(lr=args.max_lr, weight_decay=1e-2, eps=1e-06)
-    optimizer = get_optimizer(gpt_gnn.parameters(), args.optimizer, optimizer_args)
+    optimizer = torch.optim.AdamW(gpt_gnn.parameters(), **optimizer_args)
 
     if args.scheduler == 'cycle':
         scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, pct_start=0.02, anneal_strategy='linear', final_div_factor=100,\

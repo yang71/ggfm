@@ -1,0 +1,321 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ggfm.data.random_walk &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/introduction.html">Introduction by Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/create_dataset.html">Creating Your Own Datasets</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.models.html">ggfm.models</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ggfm.data.random_walk</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ggfm.data.random_walk</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">from</span> <span class="nn">sklearn.model_selection</span> <span class="kn">import</span> <span class="n">train_test_split</span>
+
+<span class="kn">from</span> <span class="nn">warnings</span> <span class="kn">import</span> <span class="n">filterwarnings</span>
+<span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="construct_link_and_node"><a class="viewcode-back" href="../../../generated/ggfm.data.construct_link_and_node.html#ggfm.data.construct_link_and_node">[docs]</a><span class="k">def</span> <span class="nf">construct_link_and_node</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">data_dir</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Construct link.dat and node.dat.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    graph: class:`ggfm.data.Graph`</span>
+<span class="sd">        Target graph.</span>
+<span class="sd">    </span>
+<span class="sd">    data_dir: str</span>
+<span class="sd">        Data directory for saving link.dat and node.dat, which are saved as data_dir/link.dat and data_dir/node.dat.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">type_begin_ids</span><span class="p">,</span> <span class="n">graph_node_type</span> <span class="o">=</span> <span class="n">get_type_id</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+    
+    <span class="n">graph_node_name</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph_node_type</span><span class="p">)):</span>
+        <span class="n">attr</span> <span class="o">=</span> <span class="s2">&quot;name&quot;</span>
+        <span class="k">if</span> <span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;paper&quot;</span><span class="p">:</span> <span class="n">attr</span> <span class="o">=</span> <span class="s2">&quot;title&quot;</span>
+        <span class="n">graph_node_name</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]][</span><span class="n">attr</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+    <span class="c1"># node.dat</span>
+    <span class="n">node_type2id</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">type_num</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph_node_type</span><span class="p">)):</span>
+        <span class="n">node_type2id</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">type_num</span>
+        <span class="n">type_num</span> <span class="o">+=</span> <span class="mi">1</span>
+    
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s2">&quot;node.dat&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph_node_type</span><span class="p">)):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph_node_name</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]])):</span>
+                <span class="n">node_id</span> <span class="o">=</span> <span class="n">j</span> <span class="o">+</span> <span class="n">type_begin_ids</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">node_name</span> <span class="o">=</span> <span class="n">graph_node_name</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]][</span><span class="n">j</span><span class="p">]</span>
+                <span class="n">node_type</span> <span class="o">=</span> <span class="n">node_type2id</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+                <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">node_id</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">node_name</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">node_type</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;node.dat has been saved.&quot;</span><span class="p">)</span>
+        
+    
+    <span class="c1"># link.dat</span>
+    <span class="c1"># start_id  end_id  edge_type</span>
+    <span class="n">edges</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span>
+    <span class="n">relations</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">get_meta_graph</span><span class="p">()</span>
+    <span class="n">edge_types</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">num_edge</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">relations</span><span class="p">:</span>
+        <span class="n">edge_types</span><span class="p">[</span><span class="n">r</span><span class="p">[</span><span class="mi">2</span><span class="p">]]</span> <span class="o">=</span> <span class="n">num_edge</span>
+        <span class="n">num_edge</span> <span class="o">+=</span> <span class="mi">1</span>
+    
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s2">&quot;link.dat&quot;</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">target_type</span> <span class="ow">in</span> <span class="n">edges</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">edges</span><span class="p">[</span><span class="n">target_type</span><span class="p">]:</span>
+                <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">edges</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="n">source_type</span><span class="p">]:</span>
+                    <span class="k">for</span> <span class="n">target_id</span> <span class="ow">in</span> <span class="n">edges</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]:</span>
+                        <span class="k">for</span> <span class="n">source_id</span> <span class="ow">in</span> <span class="n">edges</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">][</span><span class="n">target_id</span><span class="p">]:</span>
+                            <span class="n">src</span> <span class="o">=</span> <span class="n">source_id</span> <span class="o">+</span> <span class="n">type_begin_ids</span><span class="p">[</span><span class="n">node_type2id</span><span class="p">[</span><span class="n">source_type</span><span class="p">]]</span>
+                            <span class="n">dst</span> <span class="o">=</span> <span class="n">target_id</span> <span class="o">+</span> <span class="n">type_begin_ids</span><span class="p">[</span><span class="n">node_type2id</span><span class="p">[</span><span class="n">target_type</span><span class="p">]]</span>
+                            <span class="n">edge_type</span> <span class="o">=</span> <span class="n">edge_types</span><span class="p">[</span><span class="n">relation_type</span><span class="p">]</span>
+                            <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">src</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">dst</span><span class="si">}</span><span class="se">\t</span><span class="si">{</span><span class="n">edge_type</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;link.dat has been saved.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_type_id"><a class="viewcode-back" href="../../../generated/ggfm.data.get_type_id.html#ggfm.data.get_type_id">[docs]</a><span class="k">def</span> <span class="nf">get_type_id</span><span class="p">(</span><span class="n">graph</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Statistically analyze the type_degin_ids and graph_node_type of graphs.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    graph: class:`ggfm.data.Graph`</span>
+<span class="sd">        Target graph.</span>
+<span class="sd">    </span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    type_begin_ids: list</span>
+<span class="sd">        The begin index of each node type, type_begin_ids are consistent with graph_node_type.</span>
+<span class="sd">    graph_node_type: list</span>
+<span class="sd">        Graph node types.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">graph_node_name</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">graph_node_type</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">get_types</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">graph_node_type</span><span class="p">)):</span>
+        <span class="n">attr</span> <span class="o">=</span> <span class="s2">&quot;name&quot;</span>
+        <span class="k">if</span> <span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;paper&quot;</span><span class="p">:</span> <span class="n">attr</span> <span class="o">=</span> <span class="s2">&quot;title&quot;</span>
+        <span class="n">graph_node_name</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="p">]][</span><span class="n">attr</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+    <span class="n">type_begin_ids</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">graph_node_type</span><span class="p">)):</span>
+        <span class="n">type_begin_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">type_begin_ids</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">graph_node_name</span><span class="p">[</span><span class="n">graph_node_type</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]]))</span>
+    
+    <span class="k">return</span> <span class="n">type_begin_ids</span><span class="p">,</span> <span class="n">graph_node_type</span></div>
+
+
+
+<div class="viewcode-block" id="random_walk_based_corpus_construction"><a class="viewcode-back" href="../../../generated/ggfm.data.random_walk_based_corpus_construction.html#ggfm.data.random_walk_based_corpus_construction">[docs]</a><span class="k">def</span> <span class="nf">random_walk_based_corpus_construction</span><span class="p">(</span><span class="n">data_dir</span><span class="p">,</span> <span class="n">relations</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">path_length</span><span class="o">=</span><span class="mi">1000000</span><span class="p">,</span> <span class="n">path_num</span><span class="o">=</span><span class="mi">450000</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+
+<span class="sd">    Construct link.dat and node.dat.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data_dir: str</span>
+<span class="sd">        Data directory for loading link.dat and node.dat, also for saving output.txt, rw_train_corpus.txt and rw_valid_corpus.txt.</span>
+<span class="sd">    </span>
+<span class="sd">    relations: list</span>
+<span class="sd">        Relations for all edge types.</span>
+<span class="sd">    </span>
+<span class="sd">    alpha: str, optional</span>
+<span class="sd">        Each path will terminate sampling with a probability of alpha.</span>
+<span class="sd">        (default: :obj:`0.05`)</span>
+<span class="sd">    </span>
+<span class="sd">    path_length: int, optional</span>
+<span class="sd">        Sampling length of each path.</span>
+<span class="sd">        (default: :obj:`1000000`)</span>
+<span class="sd">    </span>
+<span class="sd">    path_num: int, optional</span>
+<span class="sd">        Number of sampled paths.</span>
+<span class="sd">        (default: :obj:`450000`)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">op1</span><span class="p">,</span> <span class="n">op2</span><span class="p">,</span> <span class="n">op3</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s1">&#39;node.dat&#39;</span><span class="p">,</span><span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">node_id</span><span class="p">,</span> <span class="n">node_name</span><span class="p">,</span> <span class="n">node_type</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">op1</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">node_id</span><span class="p">))</span>
+            <span class="n">op2</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node_name</span><span class="p">)</span>
+            <span class="n">op3</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">node_type</span><span class="p">))</span>  
+        
+
+    <span class="n">G</span><span class="o">=</span><span class="p">[[]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">op3</span><span class="p">))]</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s1">&#39;link.dat&#39;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">file</span><span class="p">:</span>
+            <span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">,</span> <span class="n">edge_type</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\t</span><span class="s1">&#39;</span><span class="p">)</span>
+            <span class="n">G</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">src</span><span class="p">)]</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="nb">int</span><span class="p">(</span><span class="n">dst</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">edge_type</span><span class="p">)])</span>
+
+    <span class="n">line_idx</span> <span class="o">=</span> <span class="n">op1</span>
+    <span class="n">rand</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span><span class="p">()</span>
+    <span class="n">patient_patient_path</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">dic</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">path_num</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">line</span> <span class="o">%</span> <span class="mi">10000</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">current_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+            <span class="n">dual_time</span> <span class="o">=</span> <span class="n">current_time</span> <span class="o">-</span> <span class="n">start_time</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;having sampling </span><span class="si">{</span><span class="n">line</span><span class="si">}</span><span class="s2"> lines and spent </span><span class="si">{</span><span class="n">dual_time</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+        <span class="n">temp_path</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">start_path</span> <span class="o">=</span> <span class="n">rand</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">line_idx</span><span class="p">)</span>
+        <span class="n">temp_path</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">start_path</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">dic</span><span class="p">[</span><span class="n">start_path</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">path_length</span><span class="p">):</span>
+            <span class="n">cur</span> <span class="o">=</span> <span class="n">temp_path</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">G</span><span class="p">[</span><span class="n">cur</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">rand</span><span class="o">.</span><span class="n">random</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="n">alpha</span><span class="p">:</span>
+                    <span class="n">cur_path</span> <span class="o">=</span> <span class="n">rand</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">G</span><span class="p">[</span><span class="n">cur</span><span class="p">])</span>
+                    <span class="n">temp_path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cur_path</span><span class="p">)</span>
+                    <span class="n">dic</span><span class="p">[</span><span class="n">cur_path</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="mi">1</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">temp_path</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">2</span><span class="p">):</span>
+            <span class="n">patient_patient_path</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">temp_path</span><span class="p">)</span>
+
+
+    <span class="n">line_name</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">relations</span><span class="p">)):</span>
+        <span class="n">line_name</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">relations</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s1">&#39;output.txt&#39;</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">patient_patient_path</span><span class="p">)):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">op2</span><span class="p">[</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]],</span><span class="n">line_name</span><span class="p">[</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]],</span><span class="n">op2</span><span class="p">[</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]],</span><span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="n">file</span><span class="o">=</span><span class="n">f</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="nb">len</span><span class="p">(</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="o">-</span><span class="mi">2</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="o">+</span><span class="n">line_name</span><span class="p">[</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]],</span><span class="n">op2</span><span class="p">[</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="o">+</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]],</span><span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="n">file</span><span class="o">=</span><span class="n">f</span><span class="p">)</span>
+            <span class="k">if</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">])</span><span class="o">&gt;</span><span class="mi">2</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="o">+</span><span class="n">line_name</span><span class="p">[</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">1</span><span class="p">]],</span><span class="n">op2</span><span class="p">[</span><span class="n">patient_patient_path</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="mi">0</span><span class="p">]],</span><span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="n">file</span><span class="o">=</span><span class="n">f</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">,</span><span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span><span class="n">file</span><span class="o">=</span><span class="n">f</span><span class="p">)</span>
+
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s1">&#39;output.txt&#39;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">corpus</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">file</span><span class="o">.</span><span class="n">readlines</span><span class="p">()]</span>
+    
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;length of corpus: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">corpus</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;corpus[0]: &quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">corpus</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="n">train_text</span><span class="p">,</span> <span class="n">val_text</span> <span class="o">=</span> <span class="n">train_test_split</span><span class="p">(</span><span class="n">corpus</span><span class="p">,</span> <span class="n">test_size</span><span class="o">=</span><span class="mf">0.15</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s1">&#39;rw_train_corpus.txt&#39;</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">paragraph</span> <span class="ow">in</span> <span class="n">train_text</span><span class="p">:</span>
+            <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">paragraph</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">data_dir</span> <span class="o">+</span> <span class="s1">&#39;rw_val_corpus.txt&#39;</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">paragraph</span> <span class="ow">in</span> <span class="n">val_text</span><span class="p">:</span>
+            <span class="n">file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">paragraph</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;length of train_corpus: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">train_text</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;length of valid_corpus: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">val_text</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;train_corpus and valid_corpus have been saved.&quot;</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

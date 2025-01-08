@@ -3,7 +3,6 @@ import torch
 import argparse
 import numpy as np
 import torch.nn as nn
-from ggfm.models import get_optimizer
 from ggfm.data import renamed_load, sample_subgraph, open_pkl_file
 from ggfm.data import args_print, ndcg_at_k, mean_reciprocal_rank
 from collections import OrderedDict
@@ -135,10 +134,10 @@ if __name__ == '__main__':
     '''
         Dataset arguments
     '''
-    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/datasets/', help='The address of data.')
+    parser.add_argument('--data_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/datasets/', help='The address of data.')
     parser.add_argument('--use_pretrain', type=str, default=True, help='Whether to use pre-trained model')
-    parser.add_argument('--pretrain_model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/pretrained_model/gta_all_cs3', help='The address for pretrained model.')
-    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/system/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
+    parser.add_argument('--pretrain_model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/gta_all_cs3', help='The address for pretrained model.')
+    parser.add_argument('--model_dir', type=str, default='/home/yjy/heteroPrompt/ggfm/ggfm/fine_tuned_model', help='The address for storing the models and optimization results.')
     parser.add_argument('--task_name', type=str, default='gptgnn_lp', help='The name of the stored models and optimization results.')
     parser.add_argument('--cuda', type=int, default=1, help='Avaiable GPU ID')
     parser.add_argument('--sample_depth', type=int, default=6, help='How many numbers to sample the graph')
@@ -159,7 +158,6 @@ if __name__ == '__main__':
     '''
         Optimization arguments
     '''
-    parser.add_argument('--optimizer', type=str, default='adamw', help='optimizer to use.')
     parser.add_argument('--scheduler', type=str, default='cycle', help='Name of learning rate scheduler.' , choices=['cycle', 'cosine'])
     parser.add_argument('--data_percentage', type=int, default=0.1, help='Percentage of training and validation data to use')
     parser.add_argument('--n_epoch', type=int, default=50, help='Number of epoch to run')
@@ -187,9 +185,32 @@ if __name__ == '__main__':
     test_range  = {t: True for t in graph.times if t != None and t > 2017}
 
 
-    train_pairs = open_pkl_file(args.data_dir+"train_pairs.pkl")
-    valid_pairs = open_pkl_file(args.data_dir+"valid_pairs.pkl")
-    test_pairs = open_pkl_file(args.data_dir+"test_pairs.pkl")
+    train_ids = open_pkl_file(args.data_dir+"train_ids.pkl")
+    valid_ids = open_pkl_file(args.data_dir+"valid_ids.pkl")
+    test_ids = open_pkl_file(args.data_dir+"test_ids.pkl")
+
+    # get pairs for labels
+    train_pairs = {}
+    valid_pairs = {}
+    test_pairs  = {}
+    
+    # Prepare all the souce nodes (L2 field) associated with each target node (paper) as dict
+    for target_id in graph.edge_list['paper']['field']['rev_PF_in_L2']:  # paper_id
+        for source_id in graph.edge_list['paper']['field']['rev_PF_in_L2'][target_id]:  # field_id
+            _time = graph.edge_list['paper']['field']['rev_PF_in_L2'][target_id][source_id]  # time
+            if target_id in train_ids:
+                if target_id not in train_pairs:
+                    train_pairs[target_id] = [[], _time]
+                train_pairs[target_id][0] += [source_id]
+
+            elif target_id in valid_ids:
+                if target_id not in valid_pairs:
+                    valid_pairs[target_id] = [[], _time]
+                valid_pairs[target_id][0] += [source_id]
+            else:
+                if target_id not in test_pairs:
+                    test_pairs[target_id]  = [[], _time]
+                test_pairs[target_id][0]  += [source_id]
 
     
     # Only train and valid with a certain percentage of data, if necessary.
@@ -214,7 +235,7 @@ if __name__ == '__main__':
 
     criterion = nn.KLDivLoss(reduction='batchmean')
     optimizer_args = dict(lr=5e-4)
-    optimizer = get_optimizer(model.parameters(), args.optimizer, optimizer_args)
+    optimizer = torch.optim.AdamW(model.parameters(), **optimizer_args)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500, eta_min=1e-6)
 
     res = []

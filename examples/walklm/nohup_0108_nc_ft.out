@@ -1,0 +1,53 @@
++--------------------+---------------------------------------------------------+
+| Parameter          | Value                                                   |
++--------------------+---------------------------------------------------------+
+| data_dir           | /home/yjy/heteroPrompt/ggfm/ggfm/datasets/              |
++--------------------+---------------------------------------------------------+
+| use_pretrain       | True                                                    |
++--------------------+---------------------------------------------------------+
+| pretrain_model_dir | /home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/walkl |
+|                    | m/xyz                                                   |
++--------------------+---------------------------------------------------------+
+| model_dir          | /home/yjy/heteroPrompt/ggfm/ggfm/fine_tuned_model       |
++--------------------+---------------------------------------------------------+
+| task_name          | walklm_nc                                               |
++--------------------+---------------------------------------------------------+
+| cuda               | 1                                                       |
++--------------------+---------------------------------------------------------+
+| n_epoch            | 5                                                       |
++--------------------+---------------------------------------------------------+
+| batch_size         | 64                                                      |
++--------------------+---------------------------------------------------------+
+| target_type        | paper                                                   |
++--------------------+---------------------------------------------------------+
+| clip               | 0.500                                                   |
++--------------------+---------------------------------------------------------+
+2025-01-08 10:02:52.715662: I tensorflow/core/util/port.cc:110] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2025-01-08 10:02:52.718185: I tensorflow/tsl/cuda/cudart_stub.cc:28] Could not find cuda drivers on your machine, GPU will not be used.
+2025-01-08 10:02:52.775825: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 AVX512F AVX512_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2025-01-08 10:02:58.100822: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+Some weights of RobertaModel were not initialized from the model checkpoint at /home/yjy/heteroPrompt/ggfm/ggfm/pretrained_model/walklm/xyz and are newly initialized: ['roberta.pooler.dense.bias', 'roberta.pooler.dense.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+This is epoch 1...
+Training begin...
+Evaluating begin...
+Epoch: 1  LR: 0.00023 Train Loss: 0.88  Valid Loss: 0.83  Valid ACC: 0.4246
+This is epoch 2...
+Training begin...
+Evaluating begin...
+Epoch: 2  LR: 0.00000 Train Loss: 0.83  Valid Loss: 0.82  Valid ACC: 0.4306
+This is epoch 3...
+Training begin...
+Evaluating begin...
+Epoch: 3  LR: 0.00032 Train Loss: 0.82  Valid Loss: 0.82  Valid ACC: 0.4315
+This is epoch 4...
+Training begin...
+Evaluating begin...
+Epoch: 4  LR: 0.00048 Train Loss: 0.82  Valid Loss: 0.82  Valid ACC: 0.4322
+This is epoch 5...
+Training begin...
+Evaluating begin...
+Epoch: 5  LR: 0.00014 Train Loss: 0.82  Valid Loss: 0.81  Valid ACC: 0.4329
+Testing begin...
+Best Test ACC: 0.46534937224741996

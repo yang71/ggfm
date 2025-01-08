@@ -7,6 +7,18 @@ filterwarnings("ignore")
 
 
 def construct_link_and_node(graph, data_dir):
+    r"""
+
+    Construct link.dat and node.dat.
+
+    Parameters
+    ----------
+    graph: class:`ggfm.data.Graph`
+        Target graph.
+    
+    data_dir: str
+        Data directory for saving link.dat and node.dat, which are saved as data_dir/link.dat and data_dir/node.dat.
+    """
 
     type_begin_ids, graph_node_type = get_type_id(graph)
     
@@ -59,6 +71,22 @@ def construct_link_and_node(graph, data_dir):
 
 
 def get_type_id(graph):
+    r"""
+
+    Statistically analyze the type_degin_ids and graph_node_type of graphs.
+
+    Parameters
+    ----------
+    graph: class:`ggfm.data.Graph`
+        Target graph.
+    
+    Returns
+    -------
+    type_begin_ids: list
+        The begin index of each node type, type_begin_ids are consistent with graph_node_type.
+    graph_node_type: list
+        Graph node types.
+    """
 
     graph_node_name = {}
     graph_node_type = graph.get_types()
@@ -76,6 +104,31 @@ def get_type_id(graph):
 
 
 def random_walk_based_corpus_construction(data_dir, relations, alpha=0.05, path_length=1000000, path_num=450000):
+    r"""
+
+    Construct link.dat and node.dat.
+
+    Parameters
+    ----------
+    data_dir: str
+        Data directory for loading link.dat and node.dat, also for saving output.txt, rw_train_corpus.txt and rw_valid_corpus.txt.
+    
+    relations: list
+        Relations for all edge types.
+    
+    alpha: str, optional
+        Each path will terminate sampling with a probability of alpha.
+        (default: :obj:`0.05`)
+    
+    path_length: int, optional
+        Sampling length of each path.
+        (default: :obj:`1000000`)
+    
+    path_num: int, optional
+        Number of sampled paths.
+        (default: :obj:`450000`)
+
+    """
 
     op1, op2, op3 = [], [], []
 
