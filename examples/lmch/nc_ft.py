@@ -382,8 +382,8 @@ if __name__ == '__main__':
             if step % args.eval_patience == 0:
                 valid_losses, valid_mi_f1, valid_ma_f1 = evaluation(args, device, lm_tokenizer, model, args.batch_size, valid_idx, user_seq, hard_labels)
 
-                print(("Epoch: %d  LR: %.5f Train Loss: %.2f  Valid Loss: %.2f  Valid ACC: %.4f") % \
-                  (epoch, optimizer.param_groups[0]['lr'], np.average(train_losses), np.average(valid_losses), valid_mi_f1))
+                print(("Epoch: %d  LR: %.5f Train Loss: %.2f  Valid Loss: %.2f  Valid Micro-F1: %.4f  Valid Macro-F1: %.4f") % \
+                  (epoch, optimizer.param_groups[0]['lr'], np.average(train_losses), np.average(valid_losses), valid_mi_f1, valid_ma_f1))
 
                 if valid_mi_f1 > valid_acc_best:
                     valid_acc_best = valid_mi_f1
@@ -394,4 +394,4 @@ if __name__ == '__main__':
     # test
     best_model = torch.load(os.path.join(args.model_dir, args.task_name))
     test_losses, test_mi_f1, test_ma_f1 = evaluation(args, device, lm_tokenizer, best_model, args.batch_size, test_idx, user_seq, hard_labels)
-    print(f"Best Test ACC: {test_mi_f1}")
+    print(f"Test Micro-F1: {test_mi_f1}, Test Macro-F1: {test_ma_f1}")
