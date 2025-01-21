@@ -24,7 +24,7 @@ Results
     <th>Micro-F1</th>
     <th>Macro-F1</th>
     <th>Silhouette Score</th>
-    <th>Davies-Bouldin Index</th>
+    <th>Davies-Bouldin Score</th>
   </tr>
   <tr>
     <td>Result</td>
