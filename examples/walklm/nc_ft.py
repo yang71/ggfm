@@ -187,8 +187,8 @@ if __name__ == "__main__":
                 best_val = mi
                 torch.save(model, os.path.join(args.model_dir, args.task_name))
 
-            print(("Epoch: %d  LR: %.5f Train Loss: %.2f  Valid Loss: %.2f  Valid ACC: %.4f") % \
-                  (epoch, optimizer.param_groups[0]['lr'], np.average(train_losses), np.average(valid_losses), mi))
+            print(("Epoch: %d  LR: %.5f Train Loss: %.2f  Valid Loss: %.2f  Valid Micro-F1: %.4f  Valid Macro-F1: %.4f") % \
+                  (epoch, optimizer.param_groups[0]['lr'], np.average(train_losses), np.average(valid_losses), mi, ma))
         
     # for test
     print(f"Testing begin...")
@@ -235,4 +235,4 @@ if __name__ == "__main__":
         ma = f1_score(final_labels, final_preds, average='macro')
         mi = f1_score(final_labels, final_preds, average='micro')
 
-        print(f"Best Test ACC: {mi}")
+        print(f"Test Micro-F1: {mi}, Test Macro-F1: {ma}")
