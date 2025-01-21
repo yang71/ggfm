@@ -14,18 +14,25 @@ Results
   <tr>
     <th>Task</th>
     <th colspan="2">Link Prediction</th>
-    <th>Node Classification</th>
+    <th colspan="2">Node Classification</th>
+    <th colspan="2">Clustering</th>
   </tr>
   <tr>
     <th>Evaluation Matrix</th>
     <th>MRR</th>
     <th>NDCG</th>
-    <th>Accuracy</th>
+    <th>Micro-F1</th>
+    <th>Macro-F1</th>
+    <th>Silhouette Score</th>
+    <th>Davies-Bouldin Index</th>
   </tr>
   <tr>
     <td>Result</td>
     <td>0.5874</td>
     <td>0.4813</td>
     <td>0.4653</td>
+    <td>xx</td>
+    <td>xx</td>
+    <td>xx</td>
   </tr>
 </table>
