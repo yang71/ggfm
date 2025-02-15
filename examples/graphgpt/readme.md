@@ -1,7 +1,7 @@
-# SGFormer
+# GraphGPT
 
-- Paper link: [SGFormer: simplifying and empowering transformers for large-graph representations](https://dl.acm.org/doi/abs/10.5555/3666122.3668948)
-- Author's code repo: [https://github.com/qitianwu/SGFormer](https://github.com/qitianwu/SGFormer)
+- Paper link: [GraphGPT: Graph Instruction Tuning for Large Language Models](https://arxiv.org/abs/2310.13023)
+- Author's code repo: [https://github.com/HKUDS/GraphGPT](https://github.com/HKUDS/GraphGPT)
 
 # Dataset Statics
 
@@ -28,10 +28,10 @@ Results
   </tr>
   <tr>
     <td>Result</td>
-    <td>0.2573</td>
-    <td>0.2231</td>
-    <td>0.4872</td>
-    <td>0.2394</td>
+    <td>  /</td>
+    <td>  /</td>
+    <td>0.5136</td>
+    <td>0.2678</td>
     <td> </td>
     <td> </td>
   </tr>
