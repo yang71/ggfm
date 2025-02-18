@@ -15,6 +15,7 @@ class Amazon(gg):
     Given product reviews as bag-of-words node features, the task is to
     map goods to their respective product category.
 
+
     Parameters
     ----------
     root: str, optional

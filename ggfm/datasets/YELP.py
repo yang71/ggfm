@@ -61,6 +61,7 @@ class YELP(gg):
 
     For more detailed information, please refer to the official Yelp Open Dataset page:
     https://business.yelp.com/data/resources/open-dataset/
+    see in ggfm.nginx.show/download/dataset/YELP
     """
 
     url = 'todo'

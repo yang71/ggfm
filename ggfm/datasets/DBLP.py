@@ -29,6 +29,7 @@ class DBLP(gg):
     artificial intelligence, information retrieval).
     Each author is described by a bag-of-words representation of their paper
     keywords.
+    see in ggfm.nginx.show/download/dataset/DBLP
 
     metapaths = [[('author', 'paper'), ('paper', 'author')],
                 [('author', 'paper'), ('paper', 'term'), ('term', 'paper'), ('paper', 'term')],

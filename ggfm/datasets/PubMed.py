@@ -43,6 +43,8 @@ class PubMed(gg):
         * - New Records Added (2019)
           - 1,000,000
           - Number of new records added in the year 2019.
+
+    see in ggfm.nginx.show/download/dataset/PubMed
     """
 
     url = 'todo'

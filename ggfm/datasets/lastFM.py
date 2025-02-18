@@ -8,7 +8,9 @@ from ggfm.data.utils import download_url, extract_zip
 
 class LastFM(gg):
     r"""
-    The Last.fm dataset is a comprehensive collection of user listening histories from the Last.fm music platform. It includes detailed records of user interactions with artists and tracks, making it valuable for research in areas such as music recommendation systems, user behavior analysis, and social network analysis within the music domain.
+    The Last.fm dataset is a comprehensive collection of user listening histories from the Last.fm music platform. It
+    includes detailed records of user interactions with artists and tracks, making it valuable for research in areas
+    such as music recommendation systems, user behavior analysis, and social network analysis within the music domain.
 
     Parameters
     ----------
@@ -46,6 +48,7 @@ class LastFM(gg):
 
     For more detailed information, please refer to the official Last.fm dataset page:
     https://www.last.fm/api
+    see in ggfm.nginx.show/download/dataset/lastFM
     """
 
     url = 'todo'

@@ -56,6 +56,7 @@ class CiteSeer(gg):
 
     For more detailed information, please refer to the official CiteSeer dataset page:
     https://relational.fel.cvut.cz/dataset/CiteSeer
+    see in ggfm.nginx.show/download/dataset/CiteSeer
     """
 
     url = 'todo'

@@ -53,6 +53,7 @@ class OAG_CS(gg):
 
     For more detailed information, please refer to the official OAG-CS dataset page:
     https://www.aminer.cn/oagcs
+    see in ggfm.nginx.show/download/dataset/OAG_CS
     """
 
     url = 'todo'

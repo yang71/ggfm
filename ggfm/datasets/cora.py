@@ -56,6 +56,7 @@ class cora(gg):
 
     For more detailed information, please refer to the official Cora dataset page:
     https://linqs.soe.ucsc.edu/data
+    or see in ggfm.nginx.show/download/dataset/cora
     """
 
     url = 'todo'

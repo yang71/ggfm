@@ -71,6 +71,8 @@ class IMDB(gg):
 
     For more detailed information, please refer to the official IMDb dataset page:
     https://developer.imdb.com/non-commercial-datasets/
+    see in ggfm.nginx.show/download/dataset/IMDB
+
     """
 
     url = 'todo'

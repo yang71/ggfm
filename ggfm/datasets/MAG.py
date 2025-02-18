@@ -51,6 +51,7 @@ class MAG(gg):
 
     For more detailed information, please refer to the official MAG dataset page:
     https://www.microsoft.com/en-us/research/project/microsoft-academic-graph/
+    see in ggfm.nginx.show/download/dataset/MAG
     """
 
     url = 'todo'

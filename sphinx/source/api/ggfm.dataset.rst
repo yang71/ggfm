@@ -20,3 +20,4 @@ gammagl.datasets
    gammagl.datasets.LastFM       ..done
    gammagl.datasets.YELP         ..done
    gammagl.datasets.Amazon       ..done
+
