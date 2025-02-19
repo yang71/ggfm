@@ -26,30 +26,21 @@ class OAG_CS(gg):
         * - Data Type
           - Number of Entries
           - Description
-        * - Authors
-          - xxxx
-          - Number of authors in the CS domain.
-        * - Papers
-          - xxxx
-          - Number of papers published in the CS domain.
-        * - Conferences
-          - xxxx
-          - Number of conferences in the CS domain.
-        * - Citations
-          - xxxx
-          - Number of citations between papers.
-        * - Co-authorships
-          - xxxx
-          - Number of co-authorship relationships between authors.
-        * - Keywords
-          - xxxx
-          - Number of unique keywords associated with papers.
-        * - Institutions
-          - xxxx
-          - Number of institutions involved in CS research.
-        * - Topics
-          - xxxx
-          - Number of research topics identified in the CS domain.
+        * - Paper
+          - 546,704
+          - Number of paper nodes in the dataset.
+        * - Author
+          - 511,122
+          - Number of author nodes in the dataset.
+        * - Venue
+          - 6,946
+          - Number of venue nodes in the dataset.
+        * - Field
+          - 45,775
+          - Number of field nodes in the dataset.
+        * - Affiliation
+          - 9,090
+          - Number of affiliation nodes in the dataset.
 
     For more detailed information, please refer to the official OAG-CS dataset page:
     https://www.aminer.cn/oagcs
