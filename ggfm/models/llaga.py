@@ -4,12 +4,6 @@ import torch.nn as nn
 from torch.cuda.amp import autocast as autocast
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from torch_scatter import scatter
-# from src.model.gnn import load_gnn_model
-# from peft import (
-#     LoraConfig,
-#     get_peft_model,
-#     prepare_model_for_int8_training,
-# )
 
 BOS = '<s>[INST]'
 EOS_USER = '[/INST]'
@@ -19,7 +13,19 @@ IGNORE_INDEX = -100
 
 
 class LLAGA(torch.nn.Module):
+    r"""`"LLaGA: Large Language and Graph Assistant"
+        <https://arxiv.org/abs/2402.08170>`_ paper.
 
+        Parameters
+        ----------
+        model: class:`ggfm.models`
+            The used model.
+        tokenizer: `transformers.AutoTokenizer`
+            The tokenizer.
+        device: int
+            Device
+
+        """
     def __init__(
         self,
         args,
@@ -31,7 +37,6 @@ class LLAGA(torch.nn.Module):
 
         print('Loading LLAMA')
         kwargs = {
-            # "max_memory": {1:'20GiB', 2: '9GiB'},
             "max_memory": {1: '60GiB'},
             "device_map": "auto",
             "revision": "main",
@@ -57,15 +62,6 @@ class LLAGA(torch.nn.Module):
 
         self.model = model
         print('Finish loading LLAMA!')
-
-        # self.graph_encoder = load_gnn_model[args.gnn_model_name](
-        #     in_channels=args.gnn_in_dim,
-        #     out_channels=args.gnn_hidden_dim,
-        #     hidden_channels=args.gnn_hidden_dim,
-        #     num_layers=args.gnn_num_layers,
-        #     dropout=args.gnn_dropout,
-        #     num_heads=args.gnn_num_heads,
-        # ).to(self.model.device)
 
         self.projector = nn.Sequential(
             nn.Linear(args.mm_hidden_size, 2048),
@@ -113,7 +109,6 @@ class LLAGA(torch.nn.Module):
         bos_embeds = self.word_embedding(self.tokenizer(BOS, add_special_tokens=False, return_tensors='pt').input_ids[0].to(self.device))
         pad_embeds = self.word_embedding(torch.tensor(self.tokenizer.pad_token_id).to(self.device)).unsqueeze(0)
 
-        # 需要做padding。然后graph_emb = torch.stack(graph_emb)
         graph_emb = torch.nn.utils.rnn.pad_sequence(graph_emb, batch_first=True, padding_value=0)
         graph_embeds = self.projector(graph_emb.to(self.device))
 
@@ -171,7 +166,6 @@ class LLAGA(torch.nn.Module):
             self.tokenizer(BOS, add_special_tokens=False, return_tensors='pt').input_ids[0].to(self.device))
         pad_embeds = self.word_embedding(torch.tensor(self.tokenizer.pad_token_id).to(self.device)).unsqueeze(0)
 
-        # 需要做padding。然后graph_emb = torch.stack(graph_emb)
         graph_emb = torch.nn.utils.rnn.pad_sequence(graph_emb, batch_first=True, padding_value=0)
         graph_embeds = self.projector(graph_emb.to(self.device))
 
@@ -180,13 +174,11 @@ class LLAGA(torch.nn.Module):
         batch_attention_mask = []
         for i in range(batch_size):
             # Add bos & eos token
-
             input_ids = questions.input_ids[i] + eos_user_tokens.input_ids
             inputs_embeds = self.word_embedding(torch.tensor(input_ids).to(self.model.device))
             inputs_embeds = torch.cat([bos_embeds, graph_embeds[i], inputs_embeds], dim=0)
             batch_inputs_embeds.append(inputs_embeds)
             batch_attention_mask.append([1] * inputs_embeds.shape[0])
-
 
         # pad inputs_embeds
         max_length = max([x.shape[0] for x in batch_inputs_embeds])
@@ -203,8 +195,7 @@ class LLAGA(torch.nn.Module):
                 inputs_embeds=inputs_embeds,
                 max_new_tokens=self.max_new_tokens,
                 attention_mask=attention_mask,
-                # do_sample=True,
-                use_cache=True  # IMPORTANT!
+                use_cache=True
             )
 
         pred = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
