@@ -1,94 +1,497 @@
-# Copyright 2023 The HiGPT Team
-# Licensed under the Apache License, Version 2.0
-
-from typing import List, Optional, Tuple, Union, Dict
 import os
-import os.path as osp
-import glob
+import copy
 import json
+import logging
+import pathlib
+import glob
+import datetime
+import time
+import warnings
 import math
+import sys
+import re
+import html
+import gzip
+import numpy as np
+from collections import OrderedDict
+from dataclasses import dataclass
+from functools import lru_cache, cache
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple, Union, Callable, Any, TypeVar
+from omegaconf import OmegaConf
+from urllib.parse import urlparse
+from torch import Tensor
+from torch_geometric.typing import Adj, EdgeType, NodeType
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import CrossEntropyLoss
+from torch import optim
+from torch.nn import CrossEntropyLoss, Parameter
+from torch.utils.data import Dataset
+
 import transformers
-from transformers import AutoConfig, AutoModelForCausalLM, LlamaConfig, LlamaModel, LlamaForCausalLM
+from transformers import (
+    AutoConfig,
+    AutoModel,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    LlamaTokenizer,
+    LlamaForCausalLM,
+    LlamaModel,
+    LlamaConfig,
+)
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from torch_geometric.data import Data
-from torch_geometric.utils import remove_self_loops, add_self_loops, degree
-from torch_scatter import scatter_add
-from collections import OrderedDict
 from transformers.configuration_utils import PretrainedConfig
+
+import torch_geometric
+from torch_geometric.nn.conv import MessagePassing
+from torch_geometric.data import Data
+from torch_geometric.utils import (
+    remove_self_loops,
+    add_self_loops,
+    degree,
+    softmax,
+    add_remaining_self_loops,
+)
+from torch_geometric.utils.hetero import construct_bipartite_edge_index
+from torch_scatter import scatter_add
+
+import ftfy
 
 # Constants
 DEFAULT_GRAPH_TOKEN = "<graph>"
 DEFAULT_GRAPH_PATCH_TOKEN = "<g_patch>"
 DEFAULT_G_START_TOKEN = "<g_start>"
 DEFAULT_G_END_TOKEN = "<g_end>"
+IGNORE_INDEX = -100
+DEFAULT_PAD_TOKEN = "[PAD]"
+DEFAULT_EOS_TOKEN = "</s>"
+DEFAULT_BOS_TOKEN = "<s>"
+DEFAULT_UNK_TOKEN = "<unk>"
 
-# MetaHGT Model Configuration
-class MetaHGTConvCfg:
-    def __init__(self, in_channels=768, out_channels=768, heads=8, dynamic=True, **kwargs):
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.heads = heads
-        self.dynamic = dynamic
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+# Utility functions
+def is_url(url_or_filename):
+    parsed = urlparse(url_or_filename)
+    return parsed.scheme in ("http", "https")
 
-# Text Configuration for CLIP
-class CLIPTextCfg:
-    def __init__(self, context_length=77, vocab_size=49408, width=512, heads=8, layers=12, **kwargs):
-        self.context_length = context_length
-        self.vocab_size = vocab_size
-        self.width = width
-        self.heads = heads
-        self.layers = layers
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+def get_abs_path(path):
+    return os.path.abspath(os.path.expanduser(path))
 
-# HiGPT Configuration
-class HiGPTConfig(LlamaConfig):
-    model_type = "HiGPT"
+@lru_cache()
+def default_bpe():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "bpe_simple_vocab_16e6.txt.gz")
+
+@lru_cache()
+def bytes_to_unicode():
+    bs = list(range(ord("!"), ord("~")+1))+list(range(ord("¡"), ord("¬")+1))+list(range(ord("®"), ord("ÿ")+1))
+    cs = bs[:]
+    n = 0
+    for b in range(2**8):
+        if b not in bs:
+            bs.append(b)
+            cs.append(2**8+n)
+            n += 1
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs))
+
+def get_pairs(word):
+    pairs = set()
+    prev_char = word[0]
+    for char in word[1:]:
+        pairs.add((prev_char, char))
+        prev_char = char
+    return pairs
+
+def basic_clean(text):
+    text = ftfy.fix_text(text)
+    text = html.unescape(html.unescape(text))
+    return text.strip()
+
+def whitespace_clean(text):
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    return text
+
+# Part 2: Base Model and Basic Components
+
+class BaseModel(nn.Module):
+    """Base class for models."""
+
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def device(self):
+        return list(self.parameters())[0].device
+
+    def load_checkpoint(self, url_or_filename):
+        """Load from a finetuned checkpoint."""
+        if is_url(url_or_filename):
+            cached_file = download_cached_file(
+                url_or_filename, check_hash=False, progress=True
+            )
+            checkpoint = torch.load(cached_file, map_location="cpu")
+        elif os.path.isfile(url_or_filename):
+            checkpoint = torch.load(url_or_filename, map_location="cpu")
+        else:
+            raise RuntimeError("checkpoint url or path is invalid")
+
+        if "model" in checkpoint.keys():
+            state_dict = checkpoint["model"]
+        else:
+            state_dict = checkpoint
+
+        msg = self.load_state_dict(state_dict, strict=False)
+        logging.info("Missing keys {}".format(msg.missing_keys))
+        logging.info("load checkpoint from %s" % url_or_filename)
+        return msg
+
+    @classmethod
+    def from_pretrained(cls, model_type):
+        model_cfg = OmegaConf.load(cls.default_config_path(model_type)).model
+        model = cls.from_config(model_cfg)
+        return model
+
+    @classmethod
+    def default_config_path(cls, model_type):
+        assert model_type in cls.PRETRAINED_MODEL_CONFIG_DICT, "Unknown model type {}".format(model_type)
+        return get_abs_path(cls.PRETRAINED_MODEL_CONFIG_DICT[model_type])
+
+    def load_checkpoint_from_config(self, cfg, **kwargs):
+        load_finetuned = cfg.get("load_finetuned", True)
+        if load_finetuned:
+            finetune_path = cfg.get("finetuned", None)
+            assert finetune_path is not None, "Found load_finetuned is True, but finetune_path is None."
+            self.load_checkpoint(url_or_filename=finetune_path)
+        else:
+            load_pretrained = cfg.get("load_pretrained", True)
+            if load_pretrained:
+                pretrain_path = cfg.get("pretrained", None)
+                assert "Found load_finetuned is False, but pretrain_path is None."
+                self.load_from_pretrained(url_or_filename=pretrain_path, **kwargs)
+
+    def before_training(self, **kwargs):
+        pass
+
+    def get_optimizer_params(self, weight_decay, lr_scale=1):
+        p_wd, p_non_wd = [], []
+        for n, p in self.named_parameters():
+            if not p.requires_grad:
+                continue
+            if p.ndim < 2 or "bias" in n or "ln" in n or "bn" in n:
+                p_non_wd.append(p)
+            else:
+                p_wd.append(p)
+        optim_params = [
+            {"params": p_wd, "weight_decay": weight_decay, "lr_scale": lr_scale},
+            {"params": p_non_wd, "weight_decay": 0, "lr_scale": lr_scale},
+        ]
+        return optim_params
+
+    def before_evaluation(self, **kwargs):
+        pass
+
+    def show_n_params(self, return_str=True):
+        tot = 0
+        for p in self.parameters():
+            w = 1
+            for x in p.shape:
+                w *= x
+            tot += w
+        if return_str:
+            if tot >= 1e6:
+                return "{:.1f}M".format(tot / 1e6)
+            else:
+                return "{:.1f}K".format(tot / 1e3)
+        else:
+            return tot
+
+class LayerNorm(nn.LayerNorm):
+    """Subclass torch's LayerNorm to handle fp16."""
+
+    def forward(self, x: torch.Tensor):
+        orig_type = x.dtype
+        x = F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
+        return x.to(orig_type)
+
+class QuickGELU(nn.Module):
+    def forward(self, x: torch.Tensor):
+        return x * torch.sigmoid(1.702 * x)
     
-    def __init__(
-        self,
-        graph_hidden_size: int = 768,
-        graph_intermediate_size: int = 3072,
-        graph_num_hidden_layers: int = 12,
-        graph_num_attention_heads: int = 12,
-        graph_max_position_embeddings: int = 512,
-        graph_type_vocab_size: int = 2,
-        graph_vocab_size: int = 50000,
-        graph_layer_norm_eps: float = 1e-12,
-        graph_hidden_dropout_prob: float = 0.1,
-        graph_attention_probs_dropout_prob: float = 0.1,
-        graph_initializer_range: float = 0.02,
-        graph_type_vocab_size_a: int = 2,
-        graph_type_vocab_size_b: int = 2,
-        is_decoder: bool = True,
-        is_encoder_decoder: bool = False,
-        **kwargs,
-    ):
-        super().__init__(is_decoder=is_decoder, is_encoder_decoder=is_encoder_decoder, **kwargs)
-        self.graph_hidden_size = graph_hidden_size
-        self.graph_intermediate_size = graph_intermediate_size
-        self.graph_num_hidden_layers = graph_num_hidden_layers
-        self.graph_num_attention_heads = graph_num_attention_heads
-        self.graph_max_position_embeddings = graph_max_position_embeddings
-        self.graph_type_vocab_size = graph_type_vocab_size
-        self.graph_vocab_size = graph_vocab_size
-        self.graph_layer_norm_eps = graph_layer_norm_eps
-        self.graph_hidden_dropout_prob = graph_hidden_dropout_prob
-        self.graph_attention_probs_dropout_prob = graph_attention_probs_dropout_prob
-        self.graph_initializer_range = graph_initializer_range
-        self.graph_type_vocab_size_a = graph_type_vocab_size_a
-        self.graph_type_vocab_size_b = graph_type_vocab_size_b
+class graph_transformer(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.config = PretrainedConfig()
+        self.gnn = Transformer(
+            width=args.gnn_width,
+            layers=args.gnn_layers,
+            heads=args.gnn_heads
+        )
+        self.ln_post = LayerNorm(args.gnn_width)
+        self.proj = nn.Parameter(torch.randn(args.gnn_width, args.gnn_output) / args.gnn_width ** 0.5)
 
-# Graph Neural Network Layers
+    def forward(self, g):
+        x = g.graph_node
+        edge_index = g.edge_index
+        
+        x = self.gnn(x)
+        x = self.ln_post(x)
+        if self.proj is not None:
+            x = x @ self.proj
+            
+        return x
+
+def load_model(
+    model_path: str,
+    device: str,
+    num_gpus: int,
+    max_gpu_memory: Optional[str] = None,
+    load_8bit: bool = False,
+    cpu_offloading: bool = False,
+    debug: bool = False,
+):
+    """Load a model from Hugging Face."""
+    if device == "cpu":
+        kwargs = {"torch_dtype": torch.float32}
+    elif device == "cuda":
+        kwargs = {"torch_dtype": torch.float16}
+        if num_gpus != 1:
+            kwargs["device_map"] = "auto"
+            if max_gpu_memory is None:
+                kwargs["device_map"] = "sequential"
+                available_gpu_memory = get_gpu_memory(num_gpus)
+                kwargs["max_memory"] = {
+                    i: str(int(available_gpu_memory[i] * 0.85)) + "GiB"
+                    for i in range(num_gpus)
+                }
+            else:
+                kwargs["max_memory"] = {i: max_gpu_memory for i in range(num_gpus)}
+    else:
+        raise ValueError(f"Invalid device: {device}")
+
+    # Load model
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        low_cpu_mem_usage=True,
+        **kwargs
+    )
+
+    if (device == "cuda" and num_gpus == 1 and not cpu_offloading) or device == "mps":
+        model.to(device)
+
+    if debug:
+        print(model)
+
+    return model
+
+
+def add_model_args(parser):
+    """Add model arguments to the parser."""
+    group = parser.add_argument_group('model')
+    group.add_argument(
+        "--model-path",
+        type=str,
+        default="lmsys/vicuna-7b-v1.3",
+        help="Path to the model weights or model name on Hugging Face."
+    )
+    group.add_argument(
+        "--device",
+        type=str,
+        choices=["cpu", "cuda", "mps"],
+        default="cuda",
+        help="The device to run the model on."
+    )
+    group.add_argument(
+        "--num-gpus",
+        type=int,
+        default=1,
+        help="Number of GPUs to use."
+    )
+    group.add_argument(
+        "--max-gpu-memory",
+        type=str,
+        help="Maximum GPU memory to use per GPU."
+    )
+    group.add_argument(
+        "--load-8bit",
+        action="store_true",
+        help="Load the model in 8-bit precision."
+    )
+    group.add_argument(
+        "--cpu-offloading", 
+        action="store_true",
+        help="Offload model weights to CPU to save GPU memory."
+    )
+    return group
+
+def get_gpu_memory(num_gpus):
+    """Get available memory for each GPU."""
+    import torch.cuda
+    gpu_memory = []
+    for i in range(num_gpus):
+        with torch.cuda.device(i):
+            device = torch.cuda.current_device()
+            gpu_properties = torch.cuda.get_device_properties(device)
+            total_memory = gpu_properties.total_memory / (1024**3)  # Convert to GB
+            gpu_memory.append(total_memory)
+    return gpu_memory
+
+def maybe_zero_3(param, ignore_status=False, name=None):
+    """Handle DeepSpeed ZeRO-3 params."""
+    from deepspeed import zero
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    if hasattr(param, "ds_id"):
+        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+            if not ignore_status:
+                logging.warning(f"{name}: param.ds_status != ZeroParamStatus.NOT_AVAILABLE: {param.ds_status}")
+        with zero.GatheredParameters([param]):
+            param = param.data.detach().cpu().clone()
+    else:
+        param = param.detach().cpu().clone()
+    return param
+
+class ResidualAttentionBlock(nn.Module):
+    def __init__(self, d_model: int, n_head: int, act_layer: Callable = nn.GELU):
+        super().__init__()
+
+        self.attn = nn.MultiheadAttention(d_model, n_head)
+        self.ln_1 = LayerNorm(d_model)
+        self.mlp = nn.Sequential(
+            OrderedDict(
+                [
+                    ("c_fc", nn.Linear(d_model, d_model * 4)),
+                    ("gelu", act_layer()),
+                    ("c_proj", nn.Linear(d_model * 4, d_model)),
+                ]
+            )
+        )
+        self.ln_2 = LayerNorm(d_model)
+
+    def attention(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        return self.attn(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
+
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        x = x + self.attention(self.ln_1(x), attn_mask=attn_mask)
+        x = x + self.mlp(self.ln_2(x))
+        return x
+
+class Transformer(nn.Module):
+    def __init__(self, width: int, layers: int, heads: int, act_layer: Callable = nn.GELU):
+        super().__init__()
+        self.width = width
+        self.layers = layers
+        self.resblocks = nn.ModuleList(
+            [ResidualAttentionBlock(width, heads, act_layer=act_layer) for _ in range(layers)]
+        )
+
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        for r in self.resblocks:
+            x = r(x, attn_mask=attn_mask)
+        return x
+
+class SimpleTokenizer(object):
+    def __init__(self, bpe_path: str = default_bpe(), special_tokens=None):
+        self.byte_encoder = bytes_to_unicode()
+        self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
+        merges = gzip.open(bpe_path).read().decode("utf-8").split("\n")
+        merges = merges[1:49152-256-2+1]
+        merges = [tuple(merge.split()) for merge in merges]
+        vocab = list(bytes_to_unicode().values())
+        vocab = vocab + [v+'</w>' for v in vocab]
+        for merge in merges:
+            vocab.append(''.join(merge))
+        if not special_tokens:
+            special_tokens = ["<start_of_text>", "<end_of_text>"]
+        else:
+            special_tokens = ["<start_of_text>", "<end_of_text>"] + special_tokens
+        vocab.extend(special_tokens)
+        self.encoder = dict(zip(vocab, range(len(vocab))))
+        self.decoder = {v: k for k, v in self.encoder.items()}
+        self.bpe_ranks = dict(zip(merges, range(len(merges))))
+        self.cache = {t: t for t in special_tokens}
+        special = "|".join(special_tokens)
+        self.pat = re.compile(special + r"""|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""", re.IGNORECASE)
+        self.vocab_size = len(self.encoder)
+        self.all_special_ids = [self.encoder[t] for t in special_tokens]
+
+    def bpe(self, token):
+        if token in self.cache:
+            return self.cache[token]
+        word = tuple(token[:-1]) + (token[-1] + "</w>",)
+        pairs = get_pairs(word)
+
+        if not pairs:
+            return token + "</w>"
+
+        while True:
+            bigram = min(pairs, key=lambda pair: self.bpe_ranks.get(pair, float("inf")))
+            if bigram not in self.bpe_ranks:
+                break
+            first, second = bigram
+            new_word = []
+            i = 0
+            while i < len(word):
+                try:
+                    j = word.index(first, i)
+                    new_word.extend(word[i:j])
+                    i = j
+                except:
+                    new_word.extend(word[i:])
+                    break
+
+                if word[i] == first and i < len(word)-1 and word[i+1] == second:
+                    new_word.append(first+second)
+                    i += 2
+                else:
+                    new_word.append(word[i])
+                    i += 1
+            new_word = tuple(new_word)
+            word = new_word
+            if len(word) == 1:
+                break
+            else:
+                pairs = get_pairs(word)
+        word = " ".join(word)
+        self.cache[token] = word
+        return word
+
+    def encode(self, text):
+        bpe_tokens = []
+        text = whitespace_clean(basic_clean(text)).lower()
+        for token in re.findall(self.pat, text):
+            token = "".join(self.byte_encoder[b] for b in token.encode("utf-8"))
+            bpe_tokens.extend(self.encoder[bpe_token] for bpe_token in self.bpe(token).split(" "))
+        return bpe_tokens
+
+    def decode(self, tokens):
+        text = "".join([self.decoder[token] for token in tokens])
+        text = bytearray([self.byte_decoder[c] for c in text]).decode("utf-8", errors="replace").replace("</w>", " ")
+        return text
+
+def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
+    """Returns the tokenized representation of given input string(s)"""
+    if isinstance(texts, str):
+        texts = [texts]
+
+    sot_token = _tokenizer.encoder["<start_of_text>"]
+    eot_token = _tokenizer.encoder["<end_of_text>"]
+    all_tokens = [[sot_token] + _tokenizer.encode(text) + [eot_token] for text in texts]
+    result = torch.zeros(len(all_tokens), context_length, dtype=torch.long)
+
+    for i, tokens in enumerate(all_tokens):
+        if len(tokens) > context_length:
+            tokens = tokens[:context_length]
+        result[i, :len(tokens)] = torch.tensor(tokens)
+
+    return result
+
+_tokenizer = SimpleTokenizer()
+
+# Part 3: Graph Neural Network Components
 
 def gcn_conv(h, edge_index):
-    """GCN卷积层的实现"""
+    """Basic GCN convolution operation"""
     N, node_feas = h.shape
     edge_index, _ = remove_self_loops(edge_index)
     edge_index, _ = add_self_loops(edge_index, num_nodes=N)
@@ -102,6 +505,7 @@ def gcn_conv(h, edge_index):
     deg_dst.masked_fill_(deg_dst == float('inf'), 0)
     edge_weight = deg_src * deg_dst
 
+    a = torch.sparse_coo_tensor(edge_index, edge_weight, torch.Size([N, N])).t()
     rows, cols = edge_index
     edge_msg = h[rows, :] * torch.unsqueeze(edge_weight, dim=-1)
     col_embeds = h[cols, :]
@@ -111,17 +515,17 @@ def gcn_conv(h, edge_index):
     return h_prime
 
 class MPNN(nn.Module):
-    """消息传递神经网络的实现"""
+    """Message Passing Neural Network implementation"""
     def __init__(self, in_channels, hidden_channels, out_channels, **kwargs):
         super(MPNN, self).__init__()
         self.config = PretrainedConfig()
-        self.dropout = kwargs.get('dropout', 0.1)
-        self.num_layers = kwargs.get('num_layers', 2)
+        self.dropout = kwargs.get('dropout')
+        self.num_layers = kwargs.get('num_layers')
         self.ff_bias = True
 
         self.bns = nn.BatchNorm1d(hidden_channels, affine=False, track_running_stats=False)
         self.activation = F.relu
-        self.if_param = kwargs.get('if_param', True)
+        self.if_param = kwargs.get('if_param')
 
         if self.if_param:
             self.fcs = nn.ModuleList([])
@@ -140,7 +544,7 @@ class MPNN(nn.Module):
         x = g.graph_node
         edge_index = g.edge_index
         try:
-            device = next(self.parameters()).device
+            device = self.parameters().__next__().device
         except:
             device = x.device
         x = x.to(device)
@@ -167,226 +571,537 @@ class MPNN(nn.Module):
             x = x + self.fcs[-1].bias
         return x
 
-class LayerNorm(nn.LayerNorm):
-    """处理fp16的LayerNorm实现"""
-    def forward(self, x: torch.Tensor):
-        orig_type = x.dtype
-        ret = super().forward(x.type(torch.float32))
-        return ret.type(orig_type)
+@dataclass
+class MetaHGTConvCfg:
+    """Configuration class for MetaHGT Convolution"""
+    in_channels: int
+    out_channels: int
+    heads: int
+    dynamic: bool = True
 
-class QuickGELU(nn.Module):
-    """快速GELU激活函数"""
-    def forward(self, x: torch.Tensor):
-        return x * torch.sigmoid(1.702 * x)
+class MetaHGTConv(MessagePassing):
+    """Meta Heterogeneous Graph Transformer Convolution"""
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        heads: int = 1,
+        dynamic: bool = False,
+        text_cfg = None,
+        **kwargs,
+    ):
+        super().__init__(aggr='add', node_dim=0, **kwargs)
 
-def PositionalEncoding(q_len, d_model, normalize=True):
-    """位置编码实现"""
-    pe = torch.zeros(q_len, d_model)
-    position = torch.arange(0, q_len).unsqueeze(1)
-    div_term = torch.exp(torch.arange(0, d_model, 2) * -(math.log(10000.0) / d_model))
-    pe[:, 0::2] = torch.sin(position * div_term)
-    pe[:, 1::2] = torch.cos(position * div_term)
-    if normalize:
-        pe = pe - pe.mean()
-        pe = pe / (pe.std() * 10)
-    return pe
-
-def pos_encoding(pe, learn_pe, nvar, d_model):
-    """位置编码生成器"""
-    if pe == None:
-        W_pos = torch.empty((nvar, d_model))
-        nn.init.uniform_(W_pos, -0.02, 0.02)
-        learn_pe = False
-    elif pe == 'zero':
-        W_pos = torch.empty((nvar, 1))
-        nn.init.uniform_(W_pos, -0.02, 0.02)
-    elif pe == 'zeros':
-        W_pos = torch.empty((nvar, d_model))
-        nn.init.uniform_(W_pos, -0.02, 0.02)
-    elif pe == 'normal' or pe == 'gauss':
-        W_pos = torch.zeros((nvar, 1))
-        nn.init.normal_(W_pos, mean=0.0, std=0.1)
-    elif pe == 'uniform':
-        W_pos = torch.zeros((nvar, 1))
-        nn.init.uniform_(W_pos, a=0.0, b=0.1)
-    elif pe == 'sincos':
-        W_pos = PositionalEncoding(nvar, d_model, normalize=True)
-    else:
-        raise ValueError(f"{pe} is not a valid pe")
-    return nn.Parameter(W_pos, requires_grad=learn_pe)
-
-class ResidualAttentionBlock(nn.Module):
-    """残差注意力块"""
-    def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None):
-        super().__init__()
-        self.attn = nn.MultiheadAttention(d_model, n_head)
-        self.ln_1 = LayerNorm(d_model)
-        self.mlp = nn.Sequential(OrderedDict([
-            ("c_fc", nn.Linear(d_model, d_model * 4)),
-            ("gelu", QuickGELU()),
-            ("c_proj", nn.Linear(d_model * 4, d_model))
-        ]))
-        self.ln_2 = LayerNorm(d_model)
-        self.attn_mask = attn_mask
-
-    def attention(self, x: torch.Tensor):
-        self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
-        return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
-
-    def forward(self, x: torch.Tensor):
-        x = x + self.attention(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
-        return x
-
-class Transformer(nn.Module):
-    """Transformer编码器"""
-    def __init__(self, width: int, layers: int, heads: int, attn_mask: torch.Tensor = None):
-        super().__init__()
-        self.width = width
-        self.layers = layers
-        self.resblocks = nn.Sequential(*[ResidualAttentionBlock(width, heads, attn_mask) for _ in range(layers)])
-
-    def forward(self, x: torch.Tensor):
-        return self.resblocks(x)
-
-class GTLayer(nn.Module):
-    """Graph Transformer层"""
-    def __init__(self, args):
-        super(GTLayer, self).__init__()
-        self.qTrans = nn.Parameter(nn.init.xavier_uniform_(torch.empty(args.att_d_model, args.att_d_model)))
-        self.kTrans = nn.Parameter(nn.init.xavier_uniform_(torch.empty(args.att_d_model, args.att_d_model)))
-        self.vTrans = nn.Parameter(nn.init.xavier_uniform_(torch.empty(args.att_d_model, args.att_d_model)))
-        if args.att_norm:
-            self.norm = nn.LayerNorm(args.att_d_model, eps=1e-6)
-        self.args = args
-
-    def forward(self, g, embeds):
-        rows, cols = g.edge_index
-        nvar, _ = embeds.shape
-        rowEmbeds = embeds[rows, :]
-        colEmbeds = embeds[cols, :]
-        evar, _ = rowEmbeds.shape
-
-        qEmbeds = (rowEmbeds @ self.qTrans).view([evar, self.args.head, self.args.att_d_model // self.args.head])
-        kEmbeds = (colEmbeds @ self.kTrans).view([evar, self.args.head, self.args.att_d_model // self.args.head])
-        vEmbeds = (colEmbeds @ self.vTrans).view([evar, self.args.head, self.args.att_d_model // self.args.head])
-        
-        att = torch.einsum('ehd, ehd -> eh', qEmbeds, kEmbeds)
-        att = torch.clamp(att, -10.0, 10.0)
-        expAtt = torch.exp(att)
-        
-        tem = torch.zeros([nvar, self.args.head]).to(expAtt.device, dtype=expAtt.dtype)
-        rows = rows.to(expAtt.device)
-        attNorm = (tem.index_add_(0, rows, expAtt))[rows, :]
-        att = expAtt / (attNorm + 1e-8)
-        
-        resEmbeds = torch.einsum('eh, ehd -> ehd', att, vEmbeds).view([evar, self.args.att_d_model])
-        tem = torch.zeros([nvar, self.args.att_d_model]).to(resEmbeds.device, dtype=resEmbeds.dtype)
-        rows = rows.to(resEmbeds.device)
-        tem = tem.to(resEmbeds.dtype)
-        resEmbeds = tem.index_add_(0, rows, resEmbeds)
-        resEmbeds = resEmbeds + embeds
-        if self.args.att_norm:
-            resEmbeds = self.norm(resEmbeds)
-        return resEmbeds
-
-class GraphTransformer(nn.Module):
-    """Graph Transformer模型"""
-    def __init__(self, args):
-        super(GraphTransformer, self).__init__()
         self.config = PretrainedConfig()
-        self.gtLayers = nn.Sequential(*[GTLayer(args) for i in range(args.gt_layers)])
-        self.W_pos = pos_encoding('zeros', True, 1, args.att_d_model)
-        self.W_P = nn.Linear(args.gnn_input, args.att_d_model)
-        self.dropout = nn.Dropout(0.1)
-        self.inverW_P = nn.Linear(args.att_d_model, args.gnn_output)
-        self.args = args
 
-    def forward(self, g):
-        device = next(self.parameters()).device
-        g = g.to(device)
-        x = g.graph_node
-        z = self.W_P(x)
-        if self.args.if_pos:
-            embeds = self.dropout(z + self.W_pos)
-        else:
-            embeds = self.dropout(z)
-        for gt in self.gtLayers:
-            embeds = gt(g, embeds)
-        ret = self.inverW_P(embeds)
-        return ret
+        if out_channels % heads != 0:
+            raise ValueError(f"'out_channels' (got {out_channels}) must be divisible by the number of heads (got {heads})")
 
-# Graph Feature Extractor
-class GraphFeatureExtractor(nn.Module):
-    def __init__(self, config: HiGPTConfig):
-        super().__init__()
-        self.config = config
-        
-        # Graph embedding layers
-        self.node_embeddings = nn.Linear(config.graph_hidden_size, config.hidden_size)
-        self.edge_embeddings = nn.Linear(config.graph_hidden_size, config.hidden_size)
-        self.graph_position_embeddings = nn.Embedding(config.graph_max_position_embeddings, config.hidden_size)
-        
-        # Layer normalization and dropout
-        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.graph_layer_norm_eps)
-        self.dropout = nn.Dropout(config.graph_hidden_dropout_prob)
-        
-        # Graph attention layers
-        self.graph_encoder = MetaHGTConv(
-            in_channels=config.graph_hidden_size,
-            out_channels=config.hidden_size,
-            heads=config.graph_num_attention_heads,
-            dynamic=True
-        )
-        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.heads = heads
+
+        self.kqv_lin = MetaHeteroDictLinear(text_cfg.width, self.in_channels,
+                                        self.out_channels * 3, dynamic)
+
+        self.out_lin = MetaHeteroDictLinear(text_cfg.width, self.out_channels, self.out_channels, dynamic)
+        self.context_length = text_cfg.context_length
+
+        dim = out_channels // heads
+
+        self.k_rel = MetaHeteroLinear(text_cfg.width, dim, dim, dynamic)
+        self.v_rel = MetaHeteroLinear(text_cfg.width, dim, dim, dynamic)
+
+        self.skipTrans = nn.Linear(text_cfg.width, 1)
+        self.p_relTrans = nn.Linear(text_cfg.width, heads)
+        self.norm = nn.LayerNorm(self.out_channels, eps=1e-6)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        super().reset_parameters()
+
+    def _cat(self, x_dict: Dict[str, Tensor]) -> Tuple[Tensor, Dict[str, int]]:
+        """Concatenates a dictionary of features."""
+        cumsum = 0
+        outs: List[Tensor] = []
+        offset: Dict[str, int] = {}
+        for key, x in x_dict.items():
+            outs.append(x)
+            offset[key] = cumsum
+            cumsum += x.size(0)
+        return torch.cat(outs, dim=0), offset
+
+    def _construct_src_node_feat(
+        self, k_dict: Dict[str, Tensor], v_dict: Dict[str, Tensor],
+        edge_index_dict: Dict[EdgeType, Adj], 
+        edge_type_feas_dict: Dict[EdgeType, Tensor], 
+    ) -> Tuple[Tensor, Tensor, Dict[EdgeType, int]]:
+        """Constructs the source node representations."""
+        cumsum = 0
+        num_edge_types = len(edge_index_dict.keys())
+        H, D = self.heads, self.out_channels // self.heads
+
+        ks: List[Tensor] = []
+        vs: List[Tensor] = []
+        type_list: List[Tensor] = []
+        offset: Dict[EdgeType] = {}
+
+        edge_types_map = {
+            edge_type: i
+            for i, edge_type in enumerate(edge_index_dict.keys())
+        }
+        for edge_type in edge_index_dict.keys():
+            src = edge_type[0]
+            N = k_dict[src].size(0)
+            offset[edge_type] = cumsum
+            cumsum += N
+
+            edge_type_offset = edge_types_map[edge_type]
+            type_vec = torch.arange(H, dtype=torch.long).view(-1, 1).repeat(
+                1, N) * num_edge_types + edge_type_offset
+
+            type_list.append(type_vec)
+            ks.append(k_dict[src])
+            vs.append(v_dict[src])
+
+        ks = torch.cat(ks, dim=0).transpose(0, 1).reshape(-1, D)
+        vs = torch.cat(vs, dim=0).transpose(0, 1).reshape(-1, D)
+        type_vec = torch.cat(type_list, dim=1).flatten()
+
+        edge_feas_dict = {edge_types_map[k]: v for k, v in edge_type_feas_dict.items()}
+
+        k = self.k_rel(ks, type_vec, edge_feas_dict).view(H, -1, D).transpose(0, 1)
+        v = self.v_rel(vs, type_vec, edge_feas_dict).view(H, -1, D).transpose(0, 1)
+
+        return k, v, offset
+
+    def _construct_p_rel(self, edge_type_feas_dict: Dict[EdgeType, Tensor]):
+        p_rel = {k: self.p_relTrans(v).unsqueeze(0) for k, v in edge_type_feas_dict.items()}
+        return p_rel
+
+    def _construct_skip(self, node_type_feas_dict: Dict[EdgeType, Tensor]):
+        skip = {k: self.skipTrans(v) for k, v in node_type_feas_dict.items()}
+        return skip
+
     def forward(
         self,
-        graph_data: Union[Data, Dict],
-        attention_mask: Optional[torch.FloatTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        output_attentions: Optional[bool] = None,
+        x_dict: Dict[NodeType, Tensor],
+        edge_index_dict: Dict[EdgeType, Adj],
+        data_type: str = 'dblp',
+        node_type_feas_dict: Dict[NodeType, Tensor] = None,
+        edge_type_feas_dict: Dict[EdgeType, Tensor] = None,
+    ) -> Dict[NodeType, Optional[Tensor]]:
+        F = self.out_channels
+        H = self.heads
+        D = F // H
+
+        k_dict, q_dict, v_dict, out_dict = {}, {}, {}, {}
+
+        kqv_dict = self.kqv_lin(x_dict, node_type_feas_dict)
+
+        for key, val in kqv_dict.items():
+            k, q, v = torch.tensor_split(val, 3, dim=1)
+            k_dict[key] = k.view(-1, H, D)
+            q_dict[key] = q.view(-1, H, D)
+            v_dict[key] = v.view(-1, H, D)
+
+        q, dst_offset = self._cat(q_dict)
+        k, v, src_offset = self._construct_src_node_feat(
+            k_dict, v_dict, edge_index_dict, edge_type_feas_dict)
+        p_rel = self._construct_p_rel(edge_type_feas_dict)
+        edge_index, edge_attr = construct_bipartite_edge_index(
+            edge_index_dict, src_offset, dst_offset, edge_attr_dict=p_rel)
+
+        out = self.propagate(edge_index, k=k, q=q, v=v, edge_attr=edge_attr,
+                             size=None)
+
+        dst_node_types = set([key[-1] for key in edge_index_dict.keys()])
+
+        for node_type, start_offset in dst_offset.items():
+            end_offset = start_offset + q_dict[node_type].size(0)
+            if node_type in dst_node_types:
+                out_dict[node_type] = out[start_offset:end_offset]
+
+        a_dict = self.out_lin({
+            k: v if v is not None else v
+            for k, v in out_dict.items()
+        }, node_type_feas_dict)
+
+        skip = self._construct_skip(node_type_feas_dict)
+
+        for node_type, out in out_dict.items():
+            out = a_dict[node_type]
+
+            if out.size(-1) == x_dict[node_type].size(-1):
+                alpha = skip[node_type].sigmoid()
+                out = alpha * out + (1 - alpha) * x_dict[node_type]
+            out = self.norm(out)
+            out_dict[node_type] = out
+            
+        return out_dict
+
+    def message(self, k_j: Tensor, q_i: Tensor, v_j: Tensor, edge_attr: Tensor,
+                index: Tensor, ptr: Optional[Tensor],
+                size_i: Optional[int]) -> Tensor:
+        alpha = (q_i * k_j).sum(dim=-1) * edge_attr
+        alpha = alpha / math.sqrt(q_i.size(-1))
+        alpha = softmax(alpha, index, ptr, size_i)
+        out = v_j * alpha.view(-1, self.heads, 1)
+        return out.view(-1, self.out_channels)
+
+    def __repr__(self) -> str:
+        return (f'{self.__class__.__name__}(-1, {self.out_channels}, '
+                f'heads={self.heads})')
+
+class GNN(MessagePassing):
+    """Graph Neural Network implementation"""
+    def __init__(self, args, **kwargs):
+        super(GNN, self).__init__(aggr='add', **kwargs)
+        self.config = PretrainedConfig()
+        self.vars = nn.ParameterList()
+
+        w = nn.Parameter(torch.ones([args.gnn_hid, args.gnn_input]))
+        torch.nn.init.xavier_uniform_(w)
+        self.vars.append(w)
+        self.vars.append(nn.Parameter(torch.zeros(args.gnn_hid)))
+
+        w = nn.Parameter(torch.ones([args.gnn_output, args.gnn_hid]))
+        torch.nn.init.xavier_uniform_(w)
+        self.vars.append(w)
+        self.vars.append(nn.Parameter(torch.zeros(args.gnn_output)))
+
+    @staticmethod
+    def norm(edge_index, num_nodes, improved=False, dtype=None):
+        edge_weight = torch.ones((edge_index.size(1),), dtype=dtype,
+                                 device=edge_index.device)
+
+        fill_value = 1.0 if not improved else 2.0
+        edge_index, edge_weight = add_remaining_self_loops(
+            edge_index, edge_weight, fill_value, num_nodes)
+
+        row, col = edge_index
+        deg = scatter_add(edge_weight, row, dim=0, dim_size=num_nodes)
+        deg_inv_sqrt = deg.pow(-0.5)
+        deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
+
+        return edge_index, deg_inv_sqrt[row] * edge_weight * deg_inv_sqrt[col]
+
+    def forward(self, g, vars=None):
+        device = self.parameters()[0].device
+        g = g.to(device)
+        
+        edge_index = g.edge_index
+        x = g.graph_node
+        if vars is None:
+            vars = self.vars
+        improved = False
+
+        w, b = vars[0], vars[1]
+        edge_index, norm = self.norm(edge_index, x.size(self.node_dim), improved, x.dtype)
+        x = self.propagate(edge_index, x=x, norm=norm)
+        w = w.to(x.device)
+        b = b.to(x.device)
+        x = F.linear(x, w, b)
+        x = F.leaky_relu(x)
+
+        w, b = vars[2], vars[3]
+        edge_index, norm = self.norm(edge_index, x.size(self.node_dim), improved, x.dtype)
+        x = self.propagate(edge_index, x=x, norm=norm)
+        w = w.to(x.device)
+        b = b.to(x.device)
+        x = F.linear(x, w, b)
+
+        return x
+
+    def parameters(self):
+        return self.vars
+# Part 4: CLIP Components
+
+@dataclass
+class CLIPTextCfg:
+    context_length: int
+    vocab_size: int
+    width: int
+    heads: int
+    layers: int
+
+@dataclass
+class ClipOutputFeatures:
+    """Data class of features from AlbefFeatureExtractor."""
+    image_embeds: Optional[torch.FloatTensor] = None
+    image_embeds_proj: Optional[torch.FloatTensor] = None
+    text_embeds: Optional[torch.FloatTensor] = None
+    text_embeds_proj: Optional[torch.FloatTensor] = None
+
+@dataclass
+class ClipOutput:
+    intermediate_output: Optional[ClipOutputFeatures] = None
+    logit_scale_exp: Optional[torch.FloatTensor] = None
+    loss: Optional[torch.FloatTensor] = None
+
+@dataclass
+class HeteClipOutputFeatures:
+    graph_embeds: Optional[torch.FloatTensor] = None
+    graph_embeds_proj: Optional[torch.FloatTensor] = None
+    text_embeds: Optional[torch.FloatTensor] = None
+    text_embeds_proj: Optional[torch.FloatTensor] = None
+
+class CLIP(BaseModel):
+    def __init__(
+        self,
+        embed_dim: int,
+        graph_cfg: MetaHGTConvCfg,
+        text_cfg: CLIPTextCfg,
+        quick_gelu: bool = False,
     ):
-        # Process heterogeneous graph data
-        if isinstance(graph_data, dict):
-            node_features = graph_data['x_dict']
-            edge_indices = graph_data['edge_index_dict']
-        else:
-            node_features = {'graph': graph_data.x}
-            edge_indices = {'graph': graph_data.edge_index}
-        
-        # Apply graph neural network
-        graph_outputs = self.graph_encoder(node_features, edge_indices)
-        
-        # Process each node type
-        processed_features = {}
-        for node_type, features in graph_outputs.items():
-            # Apply position embeddings
-            position_ids = torch.arange(features.size(0), device=features.device)
-            position_embeddings = self.graph_position_embeddings(position_ids)
-            
-            # Combine features
-            features = self.node_embeddings(features) + position_embeddings
-            features = self.LayerNorm(features)
-            features = self.dropout(features)
-            
-            processed_features[node_type] = features
-            
-        return processed_features
+        super().__init__()
 
-# HiGPT Core Model
-class HiGPTModel(LlamaModel):
-    config_class = HiGPTConfig
+        self.tokenizer = tokenize
+        self._loss = None
 
-    def __init__(self, config: HiGPTConfig):
-        super(HiGPTModel, self).__init__(config)
+        if isinstance(graph_cfg, dict):
+            graph_cfg = MetaHGTConvCfg(**graph_cfg)
+        if isinstance(text_cfg, dict):
+            text_cfg = CLIPTextCfg(**text_cfg)
+
+        self.context_length = text_cfg.context_length
+        act_layer = QuickGELU if quick_gelu else nn.GELU
+
+        self.graph_encoder = MetaHGTConv(
+            in_channels = graph_cfg.in_channels,
+            out_channels = graph_cfg.out_channels,
+            heads = graph_cfg.heads,
+            dynamic = graph_cfg.dynamic,
+            text_cfg = text_cfg
+        )
+
+        self.transformer = Transformer(
+            width=text_cfg.width,
+            layers=text_cfg.layers,
+            heads=text_cfg.heads,
+            act_layer=act_layer,
+        )
+
+        self.vocab_size = text_cfg.vocab_size
+        self.token_embedding = nn.Embedding(text_cfg.vocab_size, text_cfg.width)
+        self.positional_embedding = nn.Parameter(torch.empty(self.context_length, text_cfg.width))
+        self.ln_final = LayerNorm(text_cfg.width)
+
+        self.text_projection = nn.Parameter(torch.empty(text_cfg.width, embed_dim))
+        self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+        self.register_buffer("attn_mask", self.build_attention_mask(), persistent=False)
+
+        self.prompt_templates = openai_imagenet_template
+        self.classifier = None
+
+        self.init_parameters()
+
+    @property
+    def loss(self):
+        if self._loss is None:
+            self._loss = HeteClipLoss()
+        return self._loss
+
+    def init_parameters(self):
+        nn.init.normal_(self.token_embedding.weight, std=0.02)
+        nn.init.normal_(self.positional_embedding, std=0.01)
+        nn.init.constant_(self.logit_scale, np.log(1 / 0.07))
+
+        proj_std = (self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5)
+        attn_std = self.transformer.width ** -0.5
+        fc_std = (2 * self.transformer.width) ** -0.5
+        for block in self.transformer.resblocks:
+            nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
+            nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
+            nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
+            nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
+
+        if self.text_projection is not None:
+            nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
+
+    def build_attention_mask(self):
+        mask = torch.empty(self.context_length, self.context_length)
+        mask.fill_(float("-inf"))
+        mask.triu_(1)
+        return mask
+
+    def encode_graph(self, graph: List[Dict[str, torch.Tensor]], des_order: List[List[str]]):
+        graph_list = []
+        for graph_dict in graph:
+            graph_list.append(self.graph_encoder(graph_dict.x_dict, graph_dict.edge_index_dict))
+        graph_embeds = []
+        assert len(graph_list) == len(des_order)
+        for idx, order in enumerate(des_order):
+            graph_embeds.extend([graph_list[idx][o] for o in order])
+        graph_embeds = torch.cat(graph_embeds, dim=0)
+        return graph_embeds
+
+    def encode_text(self, text):
+        x = self.token_embedding(text)
+        x = x + self.positional_embedding
+        x = x.permute(1, 0, 2)
+        x = self.transformer(x, attn_mask=self.attn_mask)
+        x = x.permute(1, 0, 2)
+        x = self.ln_final(x)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+        return x
+
+    def forward(self, samples):
+        graph: List[Dict] = samples.get("graph")
+        text: List[str] = samples.get("text_input")
+        des_order: List[List[str]] = samples.get("des_order")
+
+        if text is not None:
+            text = self.tokenizer(text, self.context_length).to(self.token_embedding.weight.device)
+
+        if graph is None:
+            return self.encode_text(text)
+        elif text is None:
+            return self.encode_graph(graph, des_order)
+
+        graph_embeds = self.encode_graph(graph, des_order)
+        graph_features = F.normalize(graph_embeds, dim=-1)
+
+        text_embeds = self.encode_text(text)
+        text_features = F.normalize(text_embeds, dim=-1)
+        assert graph_features.shape == text_features.shape
+
+        loss = self.loss(graph_features, text_features, self.logit_scale.exp())
+
+        return ClipOutput(
+            intermediate_output=HeteClipOutputFeatures(
+                graph_embeds=graph_embeds,
+                graph_embeds_proj=graph_features,
+                text_embeds=text_embeds,
+                text_embeds_proj=text_features,
+            ),
+            loss=loss,
+            logit_scale_exp=self.logit_scale.exp(),
+        )
+
+    def extract_features(self, samples):
+        graph: List[Dict] = samples.get("graph")
+        text: List[str] = samples.get("text_input")
+        des_order: List[List[str]] = samples.get("des_order")
+
+        if text is not None:
+            text = self.tokenizer(text)
+
+        if graph is None:
+            return self.encode_text(text)
+        elif text is None:
+            return self.encode_graph(graph, des_order)
+
+        graph_embeds = self.encode_graph(graph, des_order)
+        graph_features = F.normalize(graph_embeds, dim=-1)
+
+        text_embeds = self.encode_text(text)
+        text_features = F.normalize(text_embeds, dim=-1)
+        assert graph_features.shape == text_features.shape
+
+        return HeteClipOutputFeatures(
+            graph_embeds=graph_embeds,
+            graph_embeds_proj=graph_features,
+            text_embeds=text_embeds,
+            text_embeds_proj=text_features,
+        )
+
+# Part 5A: LLaMA Components - First Half
+
+class GraphLlamaConfig(LlamaConfig):
+    model_type = "GraphLlama"
+
+class GraphPretrainConfig:
+    def __init__(self, dictionary):
+        for key, value in dictionary.items():
+            setattr(self, key, value)
+
+def load_model_pretrained(model_name, pretrain_model_path): 
+    assert os.path.exists(os.path.join(pretrain_model_path, 'config.json')), 'config.json missing'
+    with open(os.path.join(pretrain_model_path, 'config.json'), 'r') as f:
+        config_dict = json.load(f)
+    args = GraphPretrainConfig(config_dict)
+    model = model_name(args)
+    pkl_files = glob.glob(os.path.join(pretrain_model_path, '*.pkl'))
+    state_dict = torch.load(pkl_files[0])
+    if 'logit_scale' in state_dict.keys():
+        state_dict.pop('logit_scale')
+    print('loading graph pre train model')
+    model.load_state_dict(state_dict)
+    return model, args
+
+def load_metahgt_pretrained(model_name, pretrain_model_path): 
+    assert os.path.exists(os.path.join(pretrain_model_path, 'graph_config.json')), 'graph_config.json missing'
+    with open(os.path.join(pretrain_model_path, 'graph_config.json'), 'r') as f:
+        graph_config_dict = json.load(f)
+    graph_cfg = MetaHGTConvCfg(**graph_config_dict)
+
+    assert os.path.exists(os.path.join(pretrain_model_path, 'text_config.json')), 'text_config.json missing'
+    with open(os.path.join(pretrain_model_path, 'text_config.json'), 'r') as f:
+        text_config_dict = json.load(f)
+    text_cfg = CLIPTextCfg(**text_config_dict)
+    
+    assert model_name == MetaHGTConv
+    model = model_name(
+        in_channels=graph_cfg.in_channels,
+        out_channels=graph_cfg.out_channels,
+        heads=graph_cfg.heads,
+        dynamic=graph_cfg.dynamic,
+        text_cfg=text_cfg,
+    )
+
+    pkl_files = glob.glob(os.path.join(pretrain_model_path, '*.ckpt'))
+    state_dict = torch.load(pkl_files[0], map_location='cpu')['state_dict']
+    print('loading graph pre train model ...')
+    gnn_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('model.graph_encoder'):
+            new_key = key.split('model.graph_encoder.')[1]
+            gnn_state_dict[new_key] = value
+    model.load_state_dict(gnn_state_dict, strict=False)
+    return model
+
+def transfer_param_tograph(clip_graph, gnn):
+    gnn_state_dict = clip_graph.gnn.state_dict()
+    gnn.load_state_dict(gnn_state_dict)
+    return gnn
+
+class GraphLlamaModel(LlamaModel):
+    config_class = GraphLlamaConfig
+
+    def __init__(self, config: LlamaConfig):
+        super(GraphLlamaModel, self).__init__(config)
 
         if hasattr(config, "graph_tower"):
-            self.graph_tower = GraphFeatureExtractor(config)
-            
+            if config.graph_tower == 'MPNN':
+                self.graph_tower = MPNN(
+                    in_channels=config.graph_hidden_size,
+                    hidden_channels=config.graph_hidden_size * 2,
+                    out_channels=config.graph_hidden_size,
+                    dropout=0.1,
+                    num_layers=2,
+                    if_param=False
+                )
+            elif config.graph_tower == "clip_gcn_arxiv":
+                clip_graph, args = load_model_pretrained(CLIP, config.pretrain_graph_model_path)
+                self.graph_tower = GNN(args)
+                self.graph_tower = transfer_param_tograph(clip_graph, self.graph_tower)
+            elif config.graph_tower == "clip_gt":
+                clip_graph, args = load_model_pretrained(CLIP, config.pretrain_graph_model_path)
+                self.graph_tower = graph_transformer(args)
+                self.graph_tower = transfer_param_tograph(clip_graph, self.graph_tower)
+            elif config.graph_tower == "clip_gt_arxiv":
+                clip_graph, args = load_model_pretrained(CLIP, config.pretrain_graph_model_path)
+                self.graph_tower = graph_transformer(args)
+                self.graph_tower = transfer_param_tograph(clip_graph, self.graph_tower)
+            elif config.graph_tower == "clip_gt_arxiv_pub":
+                clip_graph, args = load_model_pretrained(CLIP, config.pretrain_graph_model_path)
+                self.graph_tower = graph_transformer(args)
+                self.graph_tower = transfer_param_tograph(clip_graph, self.graph_tower)
+
         if hasattr(config, "use_graph_proj"):
             self.graph_projector = nn.Linear(config.graph_hidden_size, config.hidden_size)
-            
-        self.post_init()
 
     def get_graph_tower(self):
         graph_tower = getattr(self, 'graph_tower', None)
@@ -399,15 +1114,345 @@ class HiGPTModel(LlamaModel):
         self.config.graph_tower = graph_tower
 
         if not hasattr(self, 'graph_tower'):
-            self.graph_tower = GraphFeatureExtractor(self.config)
+            if self.config.graph_tower == 'MPNN':
+                graph_tower = MPNN(
+                    in_channels=self.config.graph_hidden_size,
+                    hidden_channels=self.config.graph_hidden_size * 2,
+                    out_channels=self.config.graph_hidden_size,
+                    dropout=0.1,
+                    num_layers=2,
+                    if_param=False
+                )
+            elif self.config.graph_tower == "clip_gcn_arxiv":
+                clip_graph, args = load_model_pretrained(CLIP, self.config.pretrain_graph_model_path)
+                graph_tower = GNN(args)
+                graph_tower = transfer_param_tograph(clip_graph, graph_tower)
+            elif self.config.graph_tower == "clip_gt":
+                clip_graph, args = load_model_pretrained(CLIP, self.config.pretrain_graph_model_path)
+                graph_tower = graph_transformer(args)
+                graph_tower = transfer_param_tograph(clip_graph, graph_tower)
+            elif self.config.graph_tower == "clip_gt_arxiv":
+                clip_graph, args = load_model_pretrained(CLIP, self.config.pretrain_graph_model_path)
+                graph_tower = graph_transformer(args)
+                graph_tower = transfer_param_tograph(clip_graph, graph_tower)
+            elif self.config.graph_tower == "clip_gt_arxiv_pub":
+                clip_graph, args = load_model_pretrained(CLIP, self.config.pretrain_graph_model_path)
+                graph_tower = graph_transformer(args)
+                graph_tower = transfer_param_tograph(clip_graph, graph_tower)
         else:
-            self.graph_tower = self.graph_tower
-            
-        self.graph_tower.requires_grad_(False)
+            graph_tower = self.graph_tower
+
+        graph_tower.requires_grad_(False)
 
         if fsdp is not None and len(fsdp) > 0:
-            self.graph_tower = [self.graph_tower]
-        
+            self.graph_tower = [graph_tower]
+        else:
+            self.graph_tower = graph_tower
+
+        self.config.use_graph_proj = True
+        self.config.graph_select_layer = graph_select_layer
+
+        if not hasattr(self, 'graph_projector'):
+            self.graph_projector = nn.Linear(self.config.graph_hidden_size, self.config.hidden_size)
+
+        if pretrain_graph_mlp_adapter is not None:
+            graph_projector_weights = torch.load(pretrain_graph_mlp_adapter, map_location='cpu')
+            self.graph_projector.load_state_dict({k.split('.')[-1]: v for k, v in graph_projector_weights.items()})
+
+# Part 5B: LLaMA Components - Second Half
+
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        graph_data: Optional[Data] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        orig_embeds_params = getattr(self, 'orig_embeds_params', None)
+
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+
+        graph_tower = self.get_graph_tower()
+        if graph_tower is not None and (input_ids.shape[1] != 1 or self.training) and graph_data is not None:
+            with torch.no_grad():
+                if type(graph_data) is list:
+                    graph_node_features = []
+                    if type(graph_data[0]) is Data:
+                        for g in graph_data:
+                            node_forward_out = graph_tower(g)
+                            graph_node_features.append(node_forward_out)
+                    elif type(graph_data[0]) is dict:
+                        for g_dict in graph_data:
+                            node_forward_out_1 = graph_tower(g_dict['graph_1'])
+                            node_forward_out_2 = graph_tower(g_dict['graph_2'])
+                            graph_node_features.append(node_forward_out_1)
+                            graph_node_features.append(node_forward_out_2)
+                else:
+                    raise ValueError(f'graph_node_reps is expected to be a list but got {type(graph_data)}')
+
+            if type(graph_data) is list:
+                graph_node_features = [self.graph_projector(node_feature) for node_feature in graph_node_features]
+            else:
+                raise ValueError(f'graph_node_reps is expected to be a list but got {type(graph_data)}')
+
+            dummy_graph_features = torch.zeros(256, 128, device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+            dummy_graph_features = self.graph_projector(dummy_graph_features)
+
+            new_input_embeds = []
+            cur_graph_idx = 0
+            for cur_input_ids, cur_input_embeds in zip(input_ids, inputs_embeds):
+                if (cur_input_ids == graph_tower.config.graph_patch_token).sum() == 0:
+                    cur_input_embeds = cur_input_embeds + (0. * dummy_graph_features).sum()
+                    new_input_embeds.append(cur_input_embeds)
+                    cur_graph_idx += 1
+                    continue
+                if graph_tower.config.use_graph_start_end:
+                    cur_graph_features = graph_node_features[cur_graph_idx]
+                    num_patches = cur_graph_features.shape[0]
+                    if (cur_input_ids == graph_tower.config.graph_start_token).sum() != (cur_input_ids == graph_tower.config.graph_end_token).sum():
+                        raise ValueError("The number of graph start tokens and graph end tokens should be the same.")
+                    graph_start_tokens = torch.where(cur_input_ids == graph_tower.config.graph_start_token)[0]
+                    for graph_start_token_pos in graph_start_tokens:
+                        cur_graph_features = graph_node_features[cur_graph_idx].to(device=cur_input_embeds.device)
+                        num_patches = cur_graph_features.shape[0]
+                        if cur_input_ids[graph_start_token_pos + num_patches + 1] != graph_tower.config.graph_end_token:
+                            raise ValueError("The graph end token should follow the graph start token.")
+                        if orig_embeds_params is not None:
+                            cur_new_input_embeds = torch.cat((cur_input_embeds[:graph_start_token_pos].detach(), cur_input_embeds[graph_start_token_pos:graph_start_token_pos+1], cur_graph_features, cur_input_embeds[graph_start_token_pos + num_patches + 1:graph_start_token_pos + num_patches + 2], cur_input_embeds[graph_start_token_pos + num_patches + 2:].detach()), dim=0)
+                        else:
+                            cur_new_input_embeds = torch.cat((cur_input_embeds[:graph_start_token_pos+1], cur_graph_features, cur_input_embeds[graph_start_token_pos + num_patches + 1:]), dim=0)
+                        cur_graph_idx += 1
+                    new_input_embeds.append(cur_new_input_embeds)
+                else:
+                    cur_graph_features = graph_node_features[cur_graph_idx]
+                    num_patches = cur_graph_features.shape[0]
+                    if (cur_input_ids == graph_tower.config.graph_patch_token).sum() != num_patches:
+                        raise ValueError("The number of graph patch tokens should be the same as the number of graph patches.")
+                    masked_indices = torch.where(cur_input_ids == graph_tower.config.graph_patch_token)[0]
+                    mask_index_start = masked_indices[0]
+                    if (masked_indices != torch.arange(mask_index_start, mask_index_start+num_patches, device=masked_indices.device, dtype=masked_indices.dtype)).any():
+                        raise ValueError("The graph patch tokens should be consecutive.")
+                    if orig_embeds_params is not None:
+                        cur_new_input_embeds = torch.cat((cur_input_embeds[:mask_index_start].detach(), cur_graph_features, cur_input_embeds[mask_index_start+num_patches:].detach()), dim=0)
+                    else:
+                        cur_new_input_embeds = torch.cat((cur_input_embeds[:mask_index_start], cur_graph_features, cur_input_embeds[mask_index_start+num_patches:]), dim=0)
+                    new_input_embeds.append(cur_new_input_embeds)
+                    cur_graph_idx += 1
+
+            assert cur_graph_idx == len(graph_node_features)
+            inputs_embeds = torch.stack(new_input_embeds, dim=0)
+
+        return super(GraphLlamaModel, self).forward(
+            input_ids=None,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict
+        )
+
+class GraphLlamaForCausalLM(LlamaForCausalLM):
+    config_class = GraphLlamaConfig
+
+    def __init__(self, config):
+        super(LlamaForCausalLM, self).__init__(config)
+        self.model = GraphLlamaModel(config)
+        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.post_init()
+
+    def get_model(self):
+        return self.model
+
+    def get_graph_tower(self):
+        return self.get_model().get_graph_tower()
+
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        graph_data: Optional[Data] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple, CausalLMOutputWithPast]:
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        outputs = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            graph_data=graph_data
+        )
+
+        hidden_states = outputs[0]
+        logits = self.lm_head(hidden_states)
+
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss_fct = CrossEntropyLoss()
+            shift_logits = shift_logits.view(-1, self.config.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            shift_labels = shift_labels.to(shift_logits.device)
+            loss = loss_fct(shift_logits, shift_labels)
+
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return (loss,) + output if loss is not None else output
+
+        return CausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+    def prepare_inputs_for_generation(
+        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
+    ):
+        if past_key_values:
+            input_ids = input_ids[:, -1:]
+
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs = {"inputs_embeds": inputs_embeds}
+        else:
+            model_inputs = {"input_ids": input_ids}
+
+        model_inputs.update(
+            {
+                "past_key_values": past_key_values,
+                "use_cache": kwargs.get("use_cache"),
+                "attention_mask": attention_mask,
+                "graph_data": [kwargs.get("graph_data", None)],
+            }
+        )
+        return model_inputs
+
+    def initialize_graph_tokenizer(self, use_graph_start_end, tokenizer, device,
+                                 tune_graph_mlp_adapter=False, pretrain_graph_mlp_adapter=None):
+        vision_config = self.get_graph_tower().config
+        vision_config.use_graph_start_end = use_graph_start_end
+        tokenizer.add_tokens([DEFAULT_GRAPH_PATCH_TOKEN], special_tokens=True)
+        self.resize_token_embeddings(len(tokenizer))
+
+        if use_graph_start_end:
+            num_new_tokens = tokenizer.add_tokens([DEFAULT_G_START_TOKEN, DEFAULT_G_END_TOKEN], special_tokens=True)
+            self.resize_token_embeddings(len(tokenizer))
+            vision_config.graph_start_token, vision_config.graph_end_token = tokenizer.convert_tokens_to_ids([DEFAULT_G_START_TOKEN, DEFAULT_G_END_TOKEN])
+
+            if num_new_tokens > 0:
+                input_embeddings = self.get_input_embeddings().weight.data
+                output_embeddings = self.get_output_embeddings().weight.data
+
+                input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
+                output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(dim=0, keepdim=True)
+
+                input_embeddings[-num_new_tokens:] = input_embeddings_avg
+                output_embeddings[-num_new_tokens:] = output_embeddings_avg
+
+            if tune_graph_mlp_adapter:
+                self.get_model().orig_embeds_params = [self.get_input_embeddings().weight.data.clone().to(device=device)]
+                for p in self.get_input_embeddings().parameters():
+                    p.requires_grad = True
+                for p in self.get_output_embeddings().parameters():
+                    p.requires_grad = False
+
+            if pretrain_graph_mlp_adapter:
+                mm_projector_weights = torch.load(pretrain_graph_mlp_adapter, map_location='cpu')
+                embed_tokens_weight = mm_projector_weights['model.embed_tokens.weight']
+                assert num_new_tokens == 2
+                if input_embeddings.shape == embed_tokens_weight.shape:
+                    input_embeddings[-num_new_tokens:] = embed_tokens_weight[-num_new_tokens:]
+                elif embed_tokens_weight.shape[0] == num_new_tokens:
+                    input_embeddings[-num_new_tokens:] = embed_tokens_weight
+                else:
+                    raise ValueError(f"Unexpected embed_tokens_weight shape. Pretrained: {embed_tokens_weight.shape}. Current: {input_embeddings.shape}. Numer of new tokens: {num_new_tokens}.")
+
+        vision_config.graph_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_GRAPH_PATCH_TOKEN])[0]
+
+# Register the models
+AutoConfig.register("GraphLlama", GraphLlamaConfig)
+AutoModelForCausalLM.register(GraphLlamaConfig, GraphLlamaForCausalLM)
+# Part 6: HeteroLLaMA Components
+
+class HeteroLlamaConfig(LlamaConfig):
+    model_type = "HeteroLlama"
+
+class HeteroLlamaModel(LlamaModel):
+    config_class = HeteroLlamaConfig
+
+    def __init__(self, config: LlamaConfig):
+        super(HeteroLlamaModel, self).__init__(config)
+
+        if hasattr(config, "graph_tower"):
+            if config.graph_tower == 'MPNN':
+                self.graph_tower = MPNN(
+                    in_channels=config.graph_hidden_size,
+                    hidden_channels=config.graph_hidden_size * 2,
+                    out_channels=config.graph_hidden_size,
+                    dropout=0.1,
+                    num_layers=2,
+                    if_param=False
+                )
+            elif config.graph_tower == "meta_hgt":
+                self.graph_tower = load_metahgt_pretrained(MetaHGTConv, config.pretrain_graph_model_path)
+
+        if hasattr(config, "use_graph_proj"):
+            self.graph_projector = nn.Linear(config.graph_hidden_size, config.hidden_size)
+
+    def get_graph_tower(self):
+        graph_tower = getattr(self, 'graph_tower', None)
+        if type(graph_tower) is list:
+            graph_tower = graph_tower[0]
+        return graph_tower
+
+    def initialize_graph_modules(self, graph_tower, graph_select_layer,
+                               pretrain_graph_mlp_adapter=None, fsdp=None):
+        self.config.graph_tower = graph_tower
+
+        if not hasattr(self, 'graph_tower'):
+            if self.config.graph_tower == 'MPNN':
+                graph_tower = MPNN(
+                    in_channels=self.config.graph_hidden_size,
+                    hidden_channels=self.config.graph_hidden_size * 2,
+                    out_channels=self.config.graph_hidden_size,
+                    dropout=0.1,
+                    num_layers=2,
+                    if_param=False
+                )
+            elif self.config.graph_tower == "meta_hgt":
+                graph_tower = load_metahgt_pretrained(MetaHGTConv, self.config.pretrain_graph_model_path)
+        else:
+            graph_tower = self.graph_tower
+
+        graph_tower.requires_grad_(False)
+
+        if fsdp is not None and len(fsdp) > 0:
+            self.graph_tower = [graph_tower]
+        else:
+            self.graph_tower = graph_tower
+
         self.config.use_graph_proj = True
         self.config.graph_select_layer = graph_select_layer
 
@@ -427,47 +1472,89 @@ class HiGPTModel(LlamaModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        graph_data: Optional[Union[Data, Dict]] = None,
-        hetero_key_order: Optional[List[str]] = None,
+        graph_data: Optional[Data] = None,
         return_dict: Optional[bool] = None,
+        hetero_key_order: Optional[List[List[str]]] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
-        
-        # Process graph data if provided
-        if self.graph_tower is not None and graph_data is not None:
-            graph_features = self.graph_tower(graph_data)
-            
-            if hetero_key_order is not None:
-                # Combine features based on key order
-                combined_features = []
-                for key in hetero_key_order:
-                    if key in graph_features:
-                        combined_features.append(graph_features[key])
-                graph_features = torch.cat(combined_features, dim=0)
+        orig_embeds_params = getattr(self, 'orig_embeds_params', None)
+
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+
+        graph_tower = self.get_graph_tower()
+        if graph_tower is not None and (input_ids.shape[1] != 1 or self.training) and graph_data is not None:
+            with torch.no_grad():
+                if type(graph_data) is list:
+                    graph_node_features = []
+                    if type(graph_data[0]) is Data:
+                        for g in graph_data:
+                            node_forward_out = graph_tower(g.x_dict, g.edge_index_dict)
+                            graph_node_features.append(node_forward_out)
+                    elif type(graph_data[0]) is dict:
+                        for g_dict in graph_data:
+                            node_forward_out_1 = graph_tower(g_dict['graph_1'])
+                            node_forward_out_2 = graph_tower(g_dict['graph_2'])
+                            graph_node_features.append(node_forward_out_1)
+                            graph_node_features.append(node_forward_out_2)
+                else:
+                    raise ValueError(f'graph_node_reps is expected to be a list but got {type(graph_data)}')
+
+            if type(graph_data) is list:
+                graph_node_features_list = []
+                for idx, order in enumerate(hetero_key_order):
+                    graph_node_features_list.extend([graph_node_features[idx][o] for o in order])
+                graph_node_features = [self.graph_projector(node_feature) for node_feature in graph_node_features_list]
             else:
-                # Use all features
-                graph_features = torch.cat(list(graph_features.values()), dim=0)
-            
-            # Project graph features
-            if hasattr(self, 'graph_projector'):
-                graph_features = self.graph_projector(graph_features)
-            
-            # Combine with text embeddings
-            if inputs_embeds is None:
-                inputs_embeds = self.embed_tokens(input_ids)
-            
-            # Insert graph features at appropriate positions
-            if hasattr(self.config, 'use_graph_start_end') and self.config.use_graph_start_end:
-                # Use start/end tokens to insert graph features
-                graph_start_tokens = torch.where(input_ids == self.config.graph_start_token)[1]
-                for idx, start_token in enumerate(graph_start_tokens):
-                    inputs_embeds[idx, start_token+1:start_token+1+graph_features.size(0)] = graph_features
-            else:
-                # Insert at graph token positions
-                graph_tokens = torch.where(input_ids == self.config.graph_patch_token)[1]
-                for idx, token_pos in enumerate(graph_tokens):
-                    inputs_embeds[idx, token_pos] = graph_features[idx]
-        
-        return super().forward(
+                raise ValueError(f'graph_node_reps is expected to be a list but got {type(graph_data)}')
+
+            dummy_graph_features = torch.zeros(256, 128, device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+            dummy_graph_features = self.graph_projector(dummy_graph_features)
+
+            new_input_embeds = []
+            cur_graph_idx = 0
+            for cur_input_ids, cur_input_embeds in zip(input_ids, inputs_embeds):
+                if (cur_input_ids == graph_tower.config.graph_patch_token).sum() == 0:
+                    cur_input_embeds = cur_input_embeds + (0. * dummy_graph_features).sum()
+                    new_input_embeds.append(cur_input_embeds)
+                    cur_graph_idx += 1
+                    continue
+                if graph_tower.config.use_graph_start_end:
+                    cur_graph_features = graph_node_features[cur_graph_idx]
+                    num_patches = cur_graph_features.shape[0]
+                    if (cur_input_ids == graph_tower.config.graph_start_token).sum() != (cur_input_ids == graph_tower.config.graph_end_token).sum():
+                        raise ValueError("The number of graph start tokens and graph end tokens should be the same.")
+                    graph_start_tokens = torch.where(cur_input_ids == graph_tower.config.graph_start_token)[0]
+                    for graph_start_token_pos in graph_start_tokens:
+                        cur_graph_features = graph_node_features[cur_graph_idx].to(device=cur_input_embeds.device)
+                        num_patches = cur_graph_features.shape[0]
+                        if cur_input_ids[graph_start_token_pos + num_patches + 1] != graph_tower.config.graph_end_token:
+                            raise ValueError("The graph end token should follow the graph start token.")
+                        if orig_embeds_params is not None:
+                            cur_new_input_embeds = torch.cat((cur_input_embeds[:graph_start_token_pos].detach(), cur_input_embeds[graph_start_token_pos:graph_start_token_pos+1], cur_graph_features, cur_input_embeds[graph_start_token_pos + num_patches + 1:graph_start_token_pos + num_patches + 2], cur_input_embeds[graph_start_token_pos + num_patches + 2:].detach()), dim=0)
+                        else:
+                            cur_new_input_embeds = torch.cat((cur_input_embeds[:graph_start_token_pos+1], cur_graph_features, cur_input_embeds[graph_start_token_pos + num_patches + 1:]), dim=0)
+                        cur_graph_idx += 1
+                    new_input_embeds.append(cur_new_input_embeds)
+                else:
+                    cur_graph_features = graph_node_features[cur_graph_idx]
+                    num_patches = cur_graph_features.shape[0]
+                    if (cur_input_ids == graph_tower.config.graph_patch_token).sum() != num_patches:
+                        raise ValueError("The number of graph patch tokens should be the same as the number of graph patches.")
+                    masked_indices = torch.where(cur_input_ids == graph_tower.config.graph_patch_token)[0]
+                    mask_index_start = masked_indices[0]
+                    if (masked_indices != torch.arange(mask_index_start, mask_index_start+num_patches, device=masked_indices.device, dtype=masked_indices.dtype)).any():
+                        raise ValueError("The graph patch tokens should be consecutive.")
+                    if orig_embeds_params is not None:
+                        cur_new_input_embeds = torch.cat((cur_input_embeds[:mask_index_start].detach(), cur_graph_features, cur_input_embeds[mask_index_start+num_patches:].detach()), dim=0)
+                    else:
+                        cur_new_input_embeds = torch.cat((cur_input_embeds[:mask_index_start], cur_graph_features, cur_input_embeds[mask_index_start+num_patches:]), dim=0)
+                    new_input_embeds.append(cur_new_input_embeds)
+                    cur_graph_idx += 1
+
+            assert cur_graph_idx == len(graph_node_features)
+            inputs_embeds = torch.stack(new_input_embeds, dim=0)
+
+        return super(HeteroLlamaModel, self).forward(
             input_ids=None,
             attention_mask=attention_mask,
             past_key_values=past_key_values,
@@ -478,13 +1565,12 @@ class HiGPTModel(LlamaModel):
             return_dict=return_dict
         )
 
-# HiGPT Causal Language Model
-class HiGPTForCausalLM(LlamaForCausalLM):
-    config_class = HiGPTConfig
+class HeteroLlamaForCausalLM(LlamaForCausalLM):
+    config_class = HeteroLlamaConfig
 
     def __init__(self, config):
         super(LlamaForCausalLM, self).__init__(config)
-        self.model = HiGPTModel(config)
+        self.model = HeteroLlamaModel(config)
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.post_init()
 
@@ -496,23 +1582,20 @@ class HiGPTForCausalLM(LlamaForCausalLM):
 
     def forward(
         self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        graph_data: Optional[Union[Data, Dict]] = None,
-        hetero_key_order: Optional[List[str]] = None,
+        graph_data: Optional[Data] = None,
         return_dict: Optional[bool] = None,
+        hetero_key_order: Optional[List[List[str]]] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-        
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         outputs = self.model(
@@ -554,12 +1637,7 @@ class HiGPTForCausalLM(LlamaForCausalLM):
         )
 
     def prepare_inputs_for_generation(
-        self, 
-        input_ids, 
-        past_key_values=None,
-        attention_mask=None,
-        inputs_embeds=None,
-        **kwargs
+        self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
         if past_key_values:
             input_ids = input_ids[:, -1:]
@@ -569,34 +1647,39 @@ class HiGPTForCausalLM(LlamaForCausalLM):
         else:
             model_inputs = {"input_ids": input_ids}
 
-        model_inputs.update(
-            {
-                "past_key_values": past_key_values,
-                "use_cache": kwargs.get("use_cache"),
-                "attention_mask": attention_mask,
-                "graph_data": kwargs.get("graph_data", None),
-                "hetero_key_order": kwargs.get("hetero_key_order", None)
-            }
-        )
+        if kwargs.get("graph_data") is None:
+            model_inputs.update(
+                {
+                    "past_key_values": past_key_values,
+                    "use_cache": kwargs.get("use_cache"),
+                    "attention_mask": attention_mask,
+                    "graph_data": None,
+                    "hetero_key_order": [kwargs.get("hetero_key_order", None)]
+                }
+            )
+        else:
+            model_inputs.update(
+                {
+                    "past_key_values": past_key_values,
+                    "use_cache": kwargs.get("use_cache"),
+                    "attention_mask": attention_mask,
+                    "graph_data": [kwargs.get("graph_data", None)],
+                    "hetero_key_order": [kwargs.get("hetero_key_order", None)]
+                }
+            )
         return model_inputs
 
-    def initialize_graph_tokenizer(
-        self, 
-        use_graph_start_end=False,
-        tokenizer=None,
-        device='cuda',
-        tune_graph_mlp_adapter=False,
-        pretrain_graph_mlp_adapter=None
-    ):
+    def initialize_graph_tokenizer(self, use_graph_start_end, tokenizer, device,
+                                 tune_graph_mlp_adapter=False, pretrain_graph_mlp_adapter=None):
+        vision_config = self.get_graph_tower().config
+        vision_config.use_graph_start_end = use_graph_start_end
         tokenizer.add_tokens([DEFAULT_GRAPH_PATCH_TOKEN], special_tokens=True)
         self.resize_token_embeddings(len(tokenizer))
 
         if use_graph_start_end:
             num_new_tokens = tokenizer.add_tokens([DEFAULT_G_START_TOKEN, DEFAULT_G_END_TOKEN], special_tokens=True)
             self.resize_token_embeddings(len(tokenizer))
-            self.config.graph_start_token, self.config.graph_end_token = tokenizer.convert_tokens_to_ids(
-                [DEFAULT_G_START_TOKEN, DEFAULT_G_END_TOKEN]
-            )
+            vision_config.graph_start_token, vision_config.graph_end_token = tokenizer.convert_tokens_to_ids([DEFAULT_G_START_TOKEN, DEFAULT_G_END_TOKEN])
 
             if num_new_tokens > 0:
                 input_embeddings = self.get_input_embeddings().weight.data
@@ -624,107 +1707,269 @@ class HiGPTForCausalLM(LlamaForCausalLM):
                 elif embed_tokens_weight.shape[0] == num_new_tokens:
                     input_embeddings[-num_new_tokens:] = embed_tokens_weight
                 else:
-                    raise ValueError(f"Unexpected embed_tokens_weight shape. Pretrained: {embed_tokens_weight.shape}. "
-                                  f"Current: {input_embeddings.shape}. Number of new tokens: {num_new_tokens}.")
+                    raise ValueError(f"Unexpected embed_tokens_weight shape. Pretrained: {embed_tokens_weight.shape}. Current: {input_embeddings.shape}. Numer of new tokens: {num_new_tokens}.")
 
-        self.config.graph_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_GRAPH_PATCH_TOKEN])[0]
+        vision_config.graph_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_GRAPH_PATCH_TOKEN])[0]
 
-# Register models
-AutoConfig.register("HiGPT", HiGPTConfig)
-AutoModelForCausalLM.register(HiGPTConfig, HiGPTForCausalLM)
+# Register the models
+AutoConfig.register("HeteroLlama", HeteroLlamaConfig)
+AutoModelForCausalLM.register(HeteroLlamaConfig, HeteroLlamaForCausalLM)
 
-class CLIP(nn.Module):
-    """CLIP模型实现"""
-    def __init__(self, args):
+# Part 7: Training Components
+
+def _tokenize_fn(strings: Sequence[str],
+                 tokenizer: transformers.PreTrainedTokenizer) -> Dict:
+    """Tokenize a list of strings."""
+    tokenized_list = [
+        tokenizer(
+            text,
+            return_tensors="pt",
+            padding="longest",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+        ) for text in strings
+    ]
+    input_ids = labels = [
+        tokenized.input_ids[0] for tokenized in tokenized_list
+    ]
+    input_ids_lens = labels_lens = [
+        tokenized.input_ids.ne(tokenizer.pad_token_id).sum().item()
+        for tokenized in tokenized_list
+    ]
+    return dict(
+        input_ids=input_ids,
+        labels=labels,
+        input_ids_lens=input_ids_lens,
+        labels_lens=labels_lens,
+    )
+
+def _mask_targets(target, tokenized_lens, speakers):
+    cur_idx = tokenized_lens[0]
+    tokenized_lens = tokenized_lens[1:]
+    target[:cur_idx] = IGNORE_INDEX
+    for tokenized_len, speaker in zip(tokenized_lens, speakers):
+        if speaker == "human":
+            target[cur_idx+2:cur_idx + tokenized_len] = IGNORE_INDEX
+        cur_idx += tokenized_len
+
+def smart_tokenizer_and_embedding_resize(
+    special_tokens_dict: Dict,
+    tokenizer: transformers.PreTrainedTokenizer,
+    model: transformers.PreTrainedModel,
+):
+    """Resize tokenizer and embedding."""
+    num_new_tokens = tokenizer.add_special_tokens(special_tokens_dict)
+    model.resize_token_embeddings(len(tokenizer))
+
+    if num_new_tokens > 0:
+        input_embeddings = model.get_input_embeddings().weight.data
+        output_embeddings = model.get_output_embeddings().weight.data
+
+        input_embeddings_avg = input_embeddings[:-num_new_tokens].mean(
+            dim=0, keepdim=True)
+        output_embeddings_avg = output_embeddings[:-num_new_tokens].mean(
+            dim=0, keepdim=True)
+
+        input_embeddings[-num_new_tokens:] = input_embeddings_avg
+        output_embeddings[-num_new_tokens:] = output_embeddings_avg
+
+
+def unwrap_model(model: nn.Module) -> nn.Module:
+    """Recursively unwraps a model from potential containers."""
+    if hasattr(model, "module"):
+        return unwrap_model(model.module)
+    else:
+        return model
+
+def find_all_linear_names(model):
+    """Find all linear layer names in the model."""
+    cls = torch.nn.Linear
+    lora_module_names = set()
+    for name, module in model.named_modules():
+        if isinstance(module, cls):
+            names = name.split('.')
+            lora_module_names.add(names[0] if len(names) == 1 else names[-1])
+
+    if 'lm_head' in lora_module_names:
+        lora_module_names.remove('lm_head')
+    return list(lora_module_names)
+
+def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str):
+    """Collects the state dict and dump to disk."""
+    if trainer.deepspeed:
+        torch.cuda.synchronize()
+        trainer.save_model(output_dir)
+        return
+
+    state_dict = trainer.model.state_dict()
+    if trainer.args.should_save:
+        cpu_state_dict = {
+            key: value.cpu()
+            for key, value in state_dict.items()
+        }
+        del state_dict
+        trainer._save(output_dir, state_dict=cpu_state_dict)
+
+def get_peft_state_maybe_zero_3(named_params, bias):
+    if bias == "none":
+        to_return = {k: t for k, t in named_params if "lora_" in k}
+    elif bias == "all":
+        to_return = {k: t for k, t in named_params if "lora_" in k or "bias" in k}
+    elif bias == "lora_only":
+        to_return = {}
+        maybe_lora_bias = {}
+        lora_bias_names = set()
+        for k, t in named_params:
+            if "lora_" in k:
+                to_return[k] = t
+                bias_name = k.split("lora_")[0] + "bias"
+                lora_bias_names.add(bias_name)
+            elif "bias" in k:
+                maybe_lora_bias[k] = t
+        for k, t in maybe_lora_bias:
+            if bias_name in lora_bias_names:
+                to_return[bias_name] = t
+    else:
+        raise NotImplementedError
+    to_return = {k: maybe_zero_3(v, name=k) for k, v in to_return.items()}
+    return to_return
+
+def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
+    to_return = {k: t for k, t in named_params if "lora_" not in k}
+    if require_grad_only:
+        to_return = {k: t for k, t in to_return.items() if t.requires_grad}
+    to_return = {k: maybe_zero_3(v, ignore_status=True).cpu() for k, v in to_return.items()}
+    return to_return
+
+def maybe_zero_3(param, ignore_status=False, name=None):
+    from deepspeed import zero
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    if hasattr(param, "ds_id"):
+        if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+            if not ignore_status:
+                logging.warning(f"{name}: param.ds_status != ZeroParamStatus.NOT_AVAILABLE: {param.ds_status}")
+        with zero.GatheredParameters([param]):
+            param = param.data.detach().cpu().clone()
+    else:
+        param = param.detach().cpu().clone()
+    return param
+
+# download cached file
+def download_cached_file(url: str, check_hash: bool = True, progress: bool = True) -> str:
+    """Download a file from url and cache it locally."""
+    from torch.hub import download_url_to_file, get_dir
+    from urllib.parse import urlparse
+    import os
+
+    parts = urlparse(url)
+    filename = os.path.basename(parts.path)
+    cached_file = os.path.join(get_dir(), filename)
+
+    if not os.path.exists(cached_file):
+        print(f'Downloading: "{url}" to {cached_file}')
+        download_url_to_file(url, cached_file, hash_prefix=None, progress=progress)
+
+    return cached_file
+
+# linear
+class MetaHeteroLinear(nn.Module):
+    def __init__(self, text_width: int, in_features: int, out_features: int, dynamic: bool = True):
         super().__init__()
+        self.text_width = text_width
+        self.in_features = in_features
+        self.out_features = out_features
+        self.dynamic = dynamic
 
-        self.context_length = args.context_length
-        self.args = args
-        self.edge_coef = args.edge_coef
+        if dynamic:
+            self.weight_proj = nn.Linear(text_width, in_features * out_features)
+            self.bias_proj = nn.Linear(text_width, out_features)
+        else:
+            self.weight = nn.Parameter(torch.randn(in_features, out_features) / in_features ** 0.5)
+            self.bias = nn.Parameter(torch.zeros(out_features))
 
-        if args.gnn_type == 'gcn':
-            self.gnn = MPNN(args)
-        elif args.gnn_type == 'gt':
-            self.gnn = GraphTransformer(args)
-            
-        self.transformer = Transformer(
-            width=args.transformer_width,
-            layers=args.transformer_layers,
-            heads=args.transformer_heads,
-            attn_mask=self.build_attention_mask()
-        )
+    def forward(self, x: Tensor, type_id: Tensor, type_embed_dict: Dict[int, Tensor]) -> Tensor:
+        if self.dynamic:
+            weight = []
+            bias = []
+            for i in range(len(type_embed_dict)):
+                type_embed = type_embed_dict[i]
+                cur_weight = self.weight_proj(type_embed).view(self.in_features, self.out_features)
+                cur_bias = self.bias_proj(type_embed)
+                weight.append(cur_weight)
+                bias.append(cur_bias)
+            weight = torch.stack(weight)
+            bias = torch.stack(bias)
+            weight = weight[type_id]
+            bias = bias[type_id]
+        else:
+            weight = self.weight
+            bias = self.bias
 
-        self.vocab_size = args.vocab_size
-        self.token_embedding = nn.Embedding(args.vocab_size, args.transformer_width)
-        self.positional_embedding = nn.Parameter(torch.empty(self.context_length, args.transformer_width))
-        self.ln_final = LayerNorm(args.transformer_width)
-        self.text_projection = nn.Parameter(torch.empty(args.transformer_width, args.embed_dim))
+        return F.linear(x, weight, bias)
 
-        if args.gnn_type == 'gcn':
-            self.dtype = self.gnn.vars[0].dtype
-        elif args.gnn_type == 'gt':
-            self.dtype = self.gnn.W_pos.dtype
+class MetaHeteroDictLinear(nn.Module):
+    def __init__(self, text_width: int, in_features: int, out_features: int, dynamic: bool = True):
+        super().__init__()
+        self.text_width = text_width
+        self.in_features = in_features
+        self.out_features = out_features
+        self.dynamic = dynamic
 
-        self.optim = torch.optim.Adam([
-            {'params': self.token_embedding.weight},
-            {'params': self.positional_embedding},
-            {'params': self.transformer.parameters()},
-            {'params': self.text_projection},
-            {'params': self.gnn.parameters()}
-        ], lr=args.lr)
+        if dynamic:
+            self.weight_proj = nn.Linear(text_width, in_features * out_features)
+            self.bias_proj = nn.Linear(text_width, out_features)
+        else:
+            self.weight = nn.Parameter(torch.randn(in_features, out_features) / in_features ** 0.5)
+            self.bias = nn.Parameter(torch.zeros(out_features))
 
-        self.initialize_parameters()
+    def forward(self, x_dict: Dict[str, Tensor], type_embed_dict: Dict[str, Tensor]) -> Dict[str, Tensor]:
+        out_dict = {}
+        for node_type, x in x_dict.items():
+            if self.dynamic:
+                type_embed = type_embed_dict[node_type]
+                weight = self.weight_proj(type_embed).view(self.in_features, self.out_features)
+                bias = self.bias_proj(type_embed)
+            else:
+                weight = self.weight
+                bias = self.bias
+            out_dict[node_type] = F.linear(x, weight, bias)
+        return out_dict
 
-    def initialize_parameters(self):
-        nn.init.normal_(self.token_embedding.weight, std=0.02)
-        nn.init.normal_(self.positional_embedding, std=0.01)
+# loss
+class HeteClipLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.labels = None
+        self.last_local_batch_size = None
 
-        proj_std = (self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5)
-        attn_std = self.transformer.width ** -0.5
-        fc_std = (2 * self.transformer.width) ** -0.5
-        for block in self.transformer.resblocks:
-            nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
-            nn.init.normal_(block.attn.out_proj.weight, std=proj_std)
-            nn.init.normal_(block.mlp.c_fc.weight, std=fc_std)
-            nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
+    def forward(self, graph_features, text_features, logit_scale):
+        device = graph_features.device
+        local_batch_size = graph_features.shape[0]
 
-        if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
+        if local_batch_size != self.last_local_batch_size:
+            self.labels = local_batch_size * [1]
+            self.labels = torch.LongTensor(self.labels).to(device)
+            self.last_local_batch_size = local_batch_size
 
-    def build_attention_mask(self):
-        mask = torch.empty(self.context_length, self.context_length)
-        mask.fill_(float("-inf"))
-        mask.triu_(1)
-        return mask
+        # normalized features
+        graph_features = F.normalize(graph_features, dim=-1)
+        text_features = F.normalize(text_features, dim=-1)
 
-    def encode_image(self, idx_train, g):
-        embs = self.gnn(g)
-        idx_train = idx_train.to(embs.device)
-        train_embs = embs[idx_train]
-        return train_embs
+        # cosine similarity as logits
+        logits_per_graph = logit_scale * graph_features @ text_features.t()
+        logits_per_text = logits_per_graph.t()
 
-    def encode_text(self, text):
-        x = self.token_embedding(text).type(self.dtype)
-        x = x + self.positional_embedding.type(self.dtype)
-        x = x.permute(1, 0, 2)
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)
-        x = self.ln_final(x).type(self.dtype)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-        x = x @ self.text_projection
-        return x
+        loss = (
+            F.cross_entropy(logits_per_graph, self.labels) +
+            F.cross_entropy(logits_per_text, self.labels)
+        ) / 2
 
-    def forward(self, g, s_n, t_n, s_n_text, t_n_text, training=True):
-        s_image_features = self.encode_image(s_n, g)
-        s_text_features = self.encode_text(s_n_text)
-        t_text_features = self.encode_text(t_n_text)
-        
-        t_text_features = t_text_features.reshape(s_image_features.shape[0], self.args.neigh_num, self.args.gnn_output)
-        t_text_features = torch.mean(t_text_features, dim=1, keepdim=False)
-        
-        s_image_features = s_image_features / s_image_features.norm(dim=-1, keepdim=True)
-        s_text_features = s_text_features / s_text_features.norm(dim=-1, keepdim=True)
-        t_text_features = t_text_features / t_text_features.norm(dim=-1, keepdim=True)
+        return loss
 
-        labels = torch.arange(s_image_features.shape[0]).cuda()
-        return s_image_features, s_text_features, t_text_features, labels 
+# add prompt
+openai_imagenet_template = [
+    lambda c: f"a photo of a {c}.",
+    lambda c: f"a photograph of a {c}.",
+    lambda c: f"an image of a {c}.",
+    lambda c: f"a picture of a {c}.",
+]

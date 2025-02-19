@@ -1,5 +1,5 @@
 from .gpt_gnn import GPT_GNN, Classifier, Matcher, HGT, RNNModel
-from .higpt import HiGPTForCausalLM, MetaHGTConv
+from .higpt import HeteroLlamaForCausalLM
 from .utils import get_optimizer
 
 
@@ -10,8 +10,7 @@ __all__ = [
     'HGT',
     'RNNModel',
     'get_optimizer',
-    'HiGPTForCausalLM',
-    'MetaHGTConv'
+    'HeteroLlamaForCausalLM'
 ]
 
 classes = __all__

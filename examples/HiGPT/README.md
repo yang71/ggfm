@@ -31,3 +31,5 @@ Results
     <td>0.2950</td>
   </tr>
 </table>
+
+Note on Link Prediction: The original HiGPT paper did not demonstrate its capabilities in link prediction tasks. Additionally, our tests have shown that the model is not well-suited for classification tasks involving thousands of categories, making it impractical for link prediction on the OAG-CS dataset.
