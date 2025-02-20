@@ -1,3 +1,4 @@
+import errno
 import pickle
 import zipfile
 
@@ -215,7 +216,14 @@ def download_google_url(id: str, folder: str,
     return download_url(url, folder, log, filename)
 
 
+def parse_npz(f):
+    r"""Parse a npz file."""
+    # see in gammagl
+    pass
+
+
 def read_npz(path):
+    r"""Read a npz file."""
     with np.load(path) as f:
         return parse_npz(f)
 
@@ -223,8 +231,10 @@ def read_npz(path):
 
 
 def maybe_log(path, log=True):
+    r"""Prints the path if log is True"""
     if log:
         print(f'Extracting {path}', file=sys.stderr)
+
 def extract_zip(path: str, folder: str, log: bool = True):
     r"""Extracts a zip archive to a specific folder.
 

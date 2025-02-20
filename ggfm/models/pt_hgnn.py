@@ -1,4 +1,7 @@
-from .conv import *
+import torch
+from torch import nn
+
+from ggfm.conv import *
 import random
 import numpy as np
 from gensim.parsing.preprocessing import *
@@ -9,6 +12,11 @@ from .cython_util import *
 
 
 class PT_HGNN(nn.Module):
+    r"""
+    PT-HGNN
+    the model for heterogeneous graph neural network with pre-training.
+    Composed of a GNN, a link prediction decoder, an attribute prediction decoder, and a text prediction decoder.
+    """
     def __init__(self, gnn, rem_edge_list, attr_decoder, types, neg_samp_num, device, neg_queue_size=0):
         super(PT_HGNN, self).__init__()
         if gnn is None:
@@ -298,6 +306,10 @@ class PT_HGNN(nn.Module):
 
 
 class Classifier(nn.Module):
+    r"""
+    Classifier
+    the model for classification.
+    """
     def __init__(self, n_hid, n_out):
         super(Classifier, self).__init__()
         self.n_hid = n_hid
@@ -342,7 +354,10 @@ class Matcher(nn.Module):
 
 
 class StructureMapping(nn.Module):
-
+    r"""
+    Structure Mapping
+    use a simple MLP to map the structure information to the same space of node embeddings.
+    """
     def __init__(self, n_hid, n_out):
         super(StructureMapping, self).__init__()
         self.n_hid = n_hid
@@ -354,6 +369,10 @@ class StructureMapping(nn.Module):
 
 
 class GNN(nn.Module):
+    r"""
+    GNN
+    the model for graph neural network.
+    """
     def __init__(self, in_dim, n_hid, num_types, num_relations, n_heads, n_layers, dropout=0.2, conv_name='hgt',
                  prev_norm=False, last_norm=False, use_RTE=True):
         super(GNN, self).__init__()

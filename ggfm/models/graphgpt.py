@@ -51,6 +51,17 @@ import math
 
 
 def gcn_conv(h, edge_index):
+    """
+    Graph Convolutional Network layer
+    Parameters
+    ----------
+    h
+    edge_index
+
+    Returns
+    -------
+
+    """
     # print(edge_index)
     N, node_feas = h.shape
     edge_index, _ = remove_self_loops(edge_index)
@@ -80,6 +91,18 @@ def gcn_conv(h, edge_index):
 
 # Implementation of MPNN, which can become MLP or GCN depending on whether using message passing
 class MPNN(nn.Module):
+    r"""
+    Message Passing Neural Network (MPNN) layer
+    Parameters
+    ----------
+    in_channels : int
+        Number of input features
+    hidden_channels : int
+        Number of hidden features
+    out_channels : int
+        Number of output features
+
+    """
     def __init__(self, in_channels, hidden_channels, out_channels, **kwargs):
         super(MPNN, self).__init__()
         self.config = PretrainedConfig()
@@ -105,7 +128,17 @@ class MPNN(nn.Module):
             nn.init.zeros_(mlp.bias)
 
     def forward(self, g, use_conv=True):
+        r"""
+        Forward pass of MPNN layer
+        Parameters
+        ----------
+        g
+        use_conv
 
+        Returns
+        -------
+
+        """
         x = g.graph_node
         edge_index = g.edge_index
         try:
@@ -132,6 +165,18 @@ class MPNN(nn.Module):
 
 
 def PositionalEncoding(q_len, d_model, normalize=True):
+    r"""
+    Positional encoding for the transformer
+    Parameters
+    ----------
+    q_len
+    d_model
+    normalize
+
+    Returns
+    -------
+
+    """
     pe = t.zeros(q_len, d_model)
     position = t.arange(0, q_len).unsqueeze(1)
     div_term = t.exp(t.arange(0, d_model, 2) * -(math.log(10000.0) / d_model))
@@ -144,7 +189,19 @@ def PositionalEncoding(q_len, d_model, normalize=True):
 
 
 def pos_encoding(pe, learn_pe, nvar, d_model):
-    # Positional encoding
+    r"""
+    Positional encoding
+    Parameters
+    ----------
+    pe
+    learn_pe
+    nvar
+    d_model
+
+    Returns
+    -------
+
+    """
     if pe == None:
         W_pos = t.empty((nvar, d_model))  # pe = None and learn_pe = False can be used to measure impact of pe
         nn.init.uniform_(W_pos, -0.02, 0.02)
@@ -170,6 +227,10 @@ def pos_encoding(pe, learn_pe, nvar, d_model):
 
 
 class graph_transformer(nn.Module):
+    r"""
+    Graph Transformer layer
+
+    """
     def __init__(self, args):
         super(graph_transformer, self).__init__()
         self.config = PretrainedConfig()
@@ -183,6 +244,16 @@ class graph_transformer(nn.Module):
         self.args = args
 
     def forward(self, g):
+        r"""
+        Forward pass of the graph transformer layer
+        Parameters
+        ----------
+        g
+
+        Returns
+        -------
+
+        """
         # Adj: sp adj
         # x: bs * n * d_model * num_patch
 
@@ -215,6 +286,9 @@ def Mv2Samedevice(vars):
 
 
 class GTLayer(nn.Module):
+    r"""
+    Graph Transformer layer
+    """
     def __init__(self, args):
         super(GTLayer, self).__init__()
         self.qTrans = nn.Parameter(init(t.empty(args.att_d_model, args.att_d_model)))
@@ -308,6 +382,16 @@ def get_pairs(word):
 
 
 def basic_clean(text):
+    r"""
+    Basic cleaning of text
+    Parameters
+    ----------
+    text
+
+    Returns
+    -------
+
+    """
     text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
     return text.strip()
@@ -320,6 +404,11 @@ def whitespace_clean(text):
 
 
 class SimpleTokenizer(object):
+    r"""
+    Simple tokenizer
+
+
+    """
     def __init__(self, bpe_path: str = default_bpe()):
         self.byte_encoder = bytes_to_unicode()
         self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
@@ -404,11 +493,26 @@ class LayerNorm(nn.LayerNorm):
 
 
 class QuickGELU(nn.Module):
+    """
+    Quick GELU activation function
+    """
     def forward(self, x: torch.Tensor):
         return x * torch.sigmoid(1.702 * x)
 
 
 class ResidualAttentionBlock(nn.Module):
+    r"""
+    Residual Attention Block
+
+    Parameters
+    ----------
+    d_model : int
+        Dimension of the model
+    n_head : int
+        Number of heads
+    attn_mask : torch.Tensor
+        Attention mask
+    """
     def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None):
         super().__init__()
 
@@ -433,6 +537,19 @@ class ResidualAttentionBlock(nn.Module):
 
 
 class Transformer(nn.Module):
+    r"""
+    Transformer layer
+    Parameters
+    ----------
+    width : int
+        Width of the model
+    layers : int
+        Number of layers
+    heads : int
+        Number of heads
+    attn_mask : torch.Tensor
+        Attention mask
+    """
     def __init__(self, width: int, layers: int, heads: int, attn_mask: torch.Tensor = None):
         super().__init__()
         self.width = width
@@ -444,6 +561,9 @@ class Transformer(nn.Module):
 
 
 class GNN(MessagePassing):
+    r"""
+    Graph Neural Network layer
+    """
     def __init__(self, args, **kwargs):
         super(GNN, self).__init__(aggr='add', **kwargs)
         self.config = PretrainedConfig()
@@ -507,12 +627,25 @@ class GNN(MessagePassing):
 
 
 def Mv2SameDevice(var_list):
+    r"""
+    Move all variables in the list to the same device
+    Parameters
+    ----------
+    var_list
+
+    Returns
+    -------
+
+    """
     for vid in range(1, len(var_list)):
         var_list[vid] = var_list[vid].to(var_list[0].device)
     return var_list
 
 
 class CLIP(nn.Module):
+    r"""
+    CLIP model class
+    """
     def __init__(self,
                  args
                  ):
@@ -696,6 +829,16 @@ class GraphPretrainConfig:
 
 
 def find_all_linear_names(model):
+    r"""
+    Find all linear layer names in the model
+    Parameters
+    ----------
+    model
+
+    Returns
+    -------
+
+    """
     cls = torch.nn.Linear
     lora_module_names = set()
     for name, module in model.named_modules():
@@ -709,6 +852,17 @@ def find_all_linear_names(model):
     return list(lora_module_names)
 
 def load_model_pretrained(model_name, pretrain_model_path):
+    r"""
+    Load pretrain model
+    Parameters
+    ----------
+    model_name
+    pretrain_model_path
+
+    Returns
+    -------
+
+    """
     # load conig json
     print("load args from pretrain model:" + pretrain_model_path)
 
@@ -727,12 +881,27 @@ def load_model_pretrained(model_name, pretrain_model_path):
 
 
 def transfer_param_tograph(clip_graph, gnn):
+    r"""
+    Transfer parameters from clip graph to GNN
+    Parameters
+    ----------
+    clip_graph
+    gnn
+
+    Returns
+    -------
+
+    """
     print(clip_graph)
     gnn_state_dict = clip_graph.gnn.state_dict()
     gnn.load_state_dict(gnn_state_dict)
     return gnn
 
 class GraphLlamaModel(LlamaModel):
+    r"""
+    Graph Llama model
+
+    """
     config_class = GraphLlamaConfig
 
     def __init__(self, config: LlamaConfig):
@@ -956,6 +1125,9 @@ class GraphLlamaModel(LlamaModel):
 
 
 class GraphLlamaForCausalLM(LlamaForCausalLM):
+    r"""
+    Graph Llama model for causal language modeling
+    """
     config_class = GraphLlamaConfig
 
     def __init__(self, config):
@@ -1117,6 +1289,9 @@ AutoModelForCausalLM.register(GraphLlamaConfig, GraphLlamaForCausalLM)
 
 
 class GraphGPT_pl(LightningModule):
+    r"""
+    Graph GPT model
+    """
     def __init__(self,
                  training_args, model_args, data_args, tokenizer,
                  **kwargs,

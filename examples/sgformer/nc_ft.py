@@ -59,113 +59,102 @@ if args.cpu:
 else:
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
-### Load and preprocess data ###
-dataset = OAG_cs_dataset(args.data_dir)
 
-if len(dataset.label.shape) == 1:
-    dataset.label = dataset.label.unsqueeze(1)
-dataset.label = dataset.label.to(device)
-
-# get the splits for all runs
-split_idx_lst = [dataset.get_idx_split(train_prop=args.train_prop, valid_prop=args.valid_prop)
+def train():
+    global dataset, dataset
+    ### Load and preprocess data ###
+    dataset = OAG_cs_dataset(args.data_dir)
+    if len(dataset.label.shape) == 1:
+        dataset.label = dataset.label.unsqueeze(1)
+    dataset.label = dataset.label.to(device)
+    # get the splits for all runs
+    split_idx_lst = [dataset.get_idx_split(train_prop=args.train_prop, valid_prop=args.valid_prop)
                      for _ in range(args.runs)]
-
-### Basic information of datasets ###
-n = dataset.graph['num_nodes']
-e = dataset.graph['edge_index'].shape[1]
-# infer the number of classes for non one-hot and one-hot labels
-c = max(dataset.label.max().item() + 1, dataset.label.shape[1])
-d = dataset.graph['node_feat'].shape[1]
-
-print(f"dataset {args.dataset} | num nodes {n} | num edge {e} | num node feats {d} | num classes {c}")
-
-# whether or not to symmetrize
-if not args.directed and args.dataset != 'ogbn-proteins':
-    dataset.graph['edge_index'] = to_undirected(dataset.graph['edge_index'])
-
-dataset.graph['edge_index'], _ = remove_self_loops(dataset.graph['edge_index'])
-dataset.graph['edge_index'], _ = add_self_loops(dataset.graph['edge_index'], num_nodes=n)
-
-dataset.graph['edge_index'], dataset.graph['node_feat'] = \
-    dataset.graph['edge_index'].to(device), dataset.graph['node_feat'].to(device)
-
-### Load method ###
-model = parse_method(args, c, d, device)
-
-### Loss function (Single-class, Multi-class) ###
-if args.dataset in ('yelp-chi', 'deezer-europe', 'twitch-e', 'fb100', 'ogbn-proteins'):
-    criterion = nn.BCEWithLogitsLoss()
-else:
-    criterion = nn.NLLLoss()
-
-### Performance metric (Acc, AUC, F1) ###
-if args.metric == 'rocauc':
-    eval_func = eval_rocauc
-elif args.metric == 'f1':
-    eval_func = eval_f1
-else:
-    eval_func = eval_acc
-
-logger = Logger(args.runs, args)
-
-model.train()
-print('MODEL:', model)
-
-### Training loop ###
-for run in range(args.runs):
-    if args.dataset in ['cora', 'citeseer', 'pubmed'] and args.protocol == 'semi':
-        split_idx = split_idx_lst[0]
+    ### Basic information of datasets ###
+    n = dataset.graph['num_nodes']
+    e = dataset.graph['edge_index'].shape[1]
+    # infer the number of classes for non one-hot and one-hot labels
+    c = max(dataset.label.max().item() + 1, dataset.label.shape[1])
+    d = dataset.graph['node_feat'].shape[1]
+    print(f"dataset {args.dataset} | num nodes {n} | num edge {e} | num node feats {d} | num classes {c}")
+    # whether or not to symmetrize
+    if not args.directed and args.dataset != 'ogbn-proteins':
+        dataset.graph['edge_index'] = to_undirected(dataset.graph['edge_index'])
+    dataset.graph['edge_index'], _ = remove_self_loops(dataset.graph['edge_index'])
+    dataset.graph['edge_index'], _ = add_self_loops(dataset.graph['edge_index'], num_nodes=n)
+    dataset.graph['edge_index'], dataset.graph['node_feat'] = \
+        dataset.graph['edge_index'].to(device), dataset.graph['node_feat'].to(device)
+    ### Load method ###
+    model = parse_method(args, c, d, device)
+    ### Loss function (Single-class, Multi-class) ###
+    if args.dataset in ('yelp-chi', 'deezer-europe', 'twitch-e', 'fb100', 'ogbn-proteins'):
+        criterion = nn.BCEWithLogitsLoss()
     else:
-        split_idx = split_idx_lst[run]
-    train_idx = split_idx['train'].to(device)
-    model.reset_parameters()
-    if args.method == 'sgformer':
-        optimizer = torch.optim.Adam([
-            {'params': model.params1, 'weight_decay': args.trans_weight_decay},
-            {'params': model.params2, 'weight_decay': args.gnn_weight_decay}
-        ],
-            lr=args.lr)
+        criterion = nn.NLLLoss()
+    ### Performance metric (Acc, AUC, F1) ###
+    if args.metric == 'rocauc':
+        eval_func = eval_rocauc
+    elif args.metric == 'f1':
+        eval_func = eval_f1
     else:
-        optimizer = torch.optim.Adam(
-            model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
-    best_val = float('-inf')
-
-
-    #所有节点保留，只有paper有label，划分set的时候只给paper node划分，相当于只有paper node参与训练
-
-
-
-    for epoch in range(args.epochs):
-        model.train()
-        optimizer.zero_grad()
-
-        train_start = time.time()
-        out = model(dataset.graph['node_feat'], dataset.graph['edge_index'])
-        if args.dataset in ('yelp-chi', 'deezer-europe', 'twitch-e', 'fb100', 'ogbn-proteins'):
-            if dataset.label.shape[1] == 1:
-                true_label = F.one_hot(dataset.label, dataset.label.max() + 1).squeeze(1)
-            else:
-                true_label = dataset.label
-            loss = criterion(out[train_idx], true_label.squeeze(1)[
-                train_idx].to(torch.float))
+        eval_func = eval_acc
+    logger = Logger(args.runs, args)
+    model.train()
+    print('MODEL:', model)
+    ### Training loop ###
+    for run in range(args.runs):
+        if args.dataset in ['cora', 'citeseer', 'pubmed'] and args.protocol == 'semi':
+            split_idx = split_idx_lst[0]
         else:
-            out = F.log_softmax(out, dim=1)
-            loss = criterion(
-                out[train_idx], dataset.label.squeeze(1)[train_idx])
-        loss.backward()
-        optimizer.step()
+            split_idx = split_idx_lst[run]
+        train_idx = split_idx['train'].to(device)
+        model.reset_parameters()
+        if args.method == 'sgformer':
+            optimizer = torch.optim.Adam([
+                {'params': model.params1, 'weight_decay': args.trans_weight_decay},
+                {'params': model.params2, 'weight_decay': args.gnn_weight_decay}
+            ],
+                lr=args.lr)
+        else:
+            optimizer = torch.optim.Adam(
+                model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
+        best_val = float('-inf')
 
-        if epoch % args.eval_step == 0:
-            result = evaluate(model, dataset, split_idx, eval_func, criterion, args)
-            logger.add_result(run, result[:-1])
+        # 所有节点保留，只有paper有label，划分set的时候只给paper node划分，相当于只有paper node参与训练
 
-            if epoch % args.display_step == 0:
-                print_str = f'Epoch: {epoch:02d}, ' + \
-                            f'Loss: {loss:.4f}, ' + \
-                            f'Train: {100 * result[0]:.2f}%, ' + \
-                            f'Valid: {100 * result[1]:.2f}%, ' + \
-                            f'Test: {100 * result[2]:.2f}%'
-                print(print_str)
-    logger.print_statistics(run)
+        for epoch in range(args.epochs):
+            model.train()
+            optimizer.zero_grad()
 
-logger.print_statistics()
+            train_start = time.time()
+            out = model(dataset.graph['node_feat'], dataset.graph['edge_index'])
+            if args.dataset in ('yelp-chi', 'deezer-europe', 'twitch-e', 'fb100', 'ogbn-proteins'):
+                if dataset.label.shape[1] == 1:
+                    true_label = F.one_hot(dataset.label, dataset.label.max() + 1).squeeze(1)
+                else:
+                    true_label = dataset.label
+                loss = criterion(out[train_idx], true_label.squeeze(1)[
+                    train_idx].to(torch.float))
+            else:
+                out = F.log_softmax(out, dim=1)
+                loss = criterion(
+                    out[train_idx], dataset.label.squeeze(1)[train_idx])
+            loss.backward()
+            optimizer.step()
+
+            if epoch % args.eval_step == 0:
+                result = evaluate(model, dataset, split_idx, eval_func, criterion, args)
+                logger.add_result(run, result[:-1])
+
+                if epoch % args.display_step == 0:
+                    print_str = f'Epoch: {epoch:02d}, ' + \
+                                f'Loss: {loss:.4f}, ' + \
+                                f'Train: {100 * result[0]:.2f}%, ' + \
+                                f'Valid: {100 * result[1]:.2f}%, ' + \
+                                f'Test: {100 * result[2]:.2f}%'
+                    print(print_str)
+        logger.print_statistics(run)
+    logger.print_statistics()
+
+if __name__ == '__main__':
+    train()

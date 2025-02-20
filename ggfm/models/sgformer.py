@@ -9,6 +9,13 @@ from torch_geometric.utils import degree
 from ggfm.conv.sgformer_conv import *
 
 class SGFormer(nn.Module):
+    r"""
+    SGFormer model from the `"SGFormer: Spatial Graph Transformer for Molecular Property Prediction"
+    Args:
+        in_channels (int): Number of input features.
+        hidden_channels (int): Number of hidden features.
+        out_channels (int): Number of output
+    """
     def __init__(self, in_channels, hidden_channels, out_channels,
                  trans_num_layers=1, trans_num_heads=1, trans_dropout=0.5, trans_use_bn=True, trans_use_residual=True,
                  trans_use_weight=True, trans_use_act=True,
