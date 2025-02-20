@@ -59,7 +59,8 @@ from torch_scatter import scatter_add
 
 import ftfy
 
-# Constants
+
+"""Special tokens used in the model"""
 DEFAULT_GRAPH_TOKEN = "<graph>"
 DEFAULT_GRAPH_PATCH_TOKEN = "<g_patch>"
 DEFAULT_G_START_TOKEN = "<g_start>"
@@ -70,20 +71,49 @@ DEFAULT_EOS_TOKEN = "</s>"
 DEFAULT_BOS_TOKEN = "<s>"
 DEFAULT_UNK_TOKEN = "<unk>"
 
-# Utility functions
 def is_url(url_or_filename):
+    """
+    Check if a string is a URL.
+    
+    Args:
+        url_or_filename (str): String to check
+        
+    Returns:
+        bool: True if string is a URL, False otherwise
+    """
     parsed = urlparse(url_or_filename)
     return parsed.scheme in ("http", "https")
 
 def get_abs_path(path):
+    """
+    Get absolute path from a potentially relative path.
+    
+    Args:
+        path (str): Input path
+        
+    Returns:
+        str: Absolute path
+    """
     return os.path.abspath(os.path.expanduser(path))
 
 @lru_cache()
 def default_bpe():
+    """
+    Get default path to BPE vocabulary file.
+    
+    Returns:
+        str: Path to BPE vocabulary file
+    """
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "bpe_simple_vocab_16e6.txt.gz")
 
 @lru_cache()
 def bytes_to_unicode():
+    """
+    Convert bytes to unicode characters.
+    
+    Returns:
+        dict: Mapping from bytes to unicode characters
+    """
     bs = list(range(ord("!"), ord("~")+1))+list(range(ord("¡"), ord("¬")+1))+list(range(ord("®"), ord("ÿ")+1))
     cs = bs[:]
     n = 0
@@ -96,6 +126,15 @@ def bytes_to_unicode():
     return dict(zip(bs, cs))
 
 def get_pairs(word):
+    """
+    Get all adjacent pairs of characters from a word.
+    
+    Args:
+        word (tuple): Word as tuple of characters
+        
+    Returns:
+        set: Set of character pairs
+    """
     pairs = set()
     prev_char = word[0]
     for char in word[1:]:
@@ -104,29 +143,59 @@ def get_pairs(word):
     return pairs
 
 def basic_clean(text):
+    """
+    Basic text cleaning using ftfy.
+    
+    Args:
+        text (str): Input text
+        
+    Returns:
+        str: Cleaned text
+    """
     text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
     return text.strip()
 
 def whitespace_clean(text):
+    """
+    Clean whitespace in text.
+    
+    Args:
+        text (str): Input text
+        
+    Returns:
+        str: Text with normalized whitespace
+    """
     text = re.sub(r'\s+', ' ', text)
     text = text.strip()
     return text
 
-# Part 2: Base Model and Basic Components
-
 class BaseModel(nn.Module):
-    """Base class for models."""
+    """
+    Base class for all models in HiGPT.
+    
+    Provides common functionality for model loading, optimization and evaluation.
+    """
 
     def __init__(self):
+        """Initialize the base model."""
         super().__init__()
 
     @property
     def device(self):
+        """Get the device where model parameters are stored."""
         return list(self.parameters())[0].device
 
     def load_checkpoint(self, url_or_filename):
-        """Load from a finetuned checkpoint."""
+        """
+        Load model weights from a checkpoint file.
+        
+        Args:
+            url_or_filename (str): Path or URL to checkpoint
+            
+        Returns:
+            LoaderOutput: Results of loading the checkpoint
+        """
         if is_url(url_or_filename):
             cached_file = download_cached_file(
                 url_or_filename, check_hash=False, progress=True
@@ -149,16 +218,47 @@ class BaseModel(nn.Module):
 
     @classmethod
     def from_pretrained(cls, model_type):
+        """
+        Create a model instance from pretrained weights.
+        
+        Args:
+            model_type (str): Type/name of the pretrained model
+            
+        Returns:
+            BaseModel: Model instance initialized with pretrained weights
+        """
         model_cfg = OmegaConf.load(cls.default_config_path(model_type)).model
         model = cls.from_config(model_cfg)
         return model
 
     @classmethod
     def default_config_path(cls, model_type):
+        """
+        Get the default configuration file path for a model type.
+        
+        Args:
+            model_type (str): Type/name of the model
+            
+        Returns:
+            str: Path to the configuration file
+            
+        Raises:
+            AssertionError: If model_type is not recognized
+        """
         assert model_type in cls.PRETRAINED_MODEL_CONFIG_DICT, "Unknown model type {}".format(model_type)
         return get_abs_path(cls.PRETRAINED_MODEL_CONFIG_DICT[model_type])
 
     def load_checkpoint_from_config(self, cfg, **kwargs):
+        """
+        Load checkpoint based on configuration.
+        
+        Args:
+            cfg (Config): Configuration object containing checkpoint paths
+            **kwargs: Additional arguments for loading pretrained weights
+            
+        Raises:
+            AssertionError: If required paths are missing in config
+        """
         load_finetuned = cfg.get("load_finetuned", True)
         if load_finetuned:
             finetune_path = cfg.get("finetuned", None)
@@ -175,6 +275,16 @@ class BaseModel(nn.Module):
         pass
 
     def get_optimizer_params(self, weight_decay, lr_scale=1):
+        """
+        Get parameters for optimizer with proper weight decay settings.
+        
+        Args:
+            weight_decay (float): Weight decay factor
+            lr_scale (float, optional): Learning rate scaling factor. Defaults to 1
+            
+        Returns:
+            list: List of parameter groups with optimization settings
+        """
         p_wd, p_non_wd = [], []
         for n, p in self.named_parameters():
             if not p.requires_grad:
@@ -193,6 +303,15 @@ class BaseModel(nn.Module):
         pass
 
     def show_n_params(self, return_str=True):
+        """
+        Calculate and format the total number of parameters.
+        
+        Args:
+            return_str (bool, optional): Whether to return formatted string. Defaults to True
+            
+        Returns:
+            Union[str, int]: Number of parameters as string (with M/K suffix) or integer
+        """
         tot = 0
         for p in self.parameters():
             w = 1
@@ -208,19 +327,63 @@ class BaseModel(nn.Module):
             return tot
 
 class LayerNorm(nn.LayerNorm):
-    """Subclass torch's LayerNorm to handle fp16."""
+    """
+    Layer normalization module with fp16 support.
+    
+    Extends PyTorch's LayerNorm to properly handle float16 precision.
+    """
 
     def forward(self, x: torch.Tensor):
+        """
+        Apply layer normalization.
+        
+        Args:
+            x (torch.Tensor): Input tensor
+            
+        Returns:
+            torch.Tensor: Normalized tensor in original dtype
+        """
         orig_type = x.dtype
         x = F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
         return x.to(orig_type)
 
 class QuickGELU(nn.Module):
+    """
+    Fast approximation of GELU activation function.
+    
+    Uses sigmoid multiplication instead of error function for efficiency.
+    """
+    
     def forward(self, x: torch.Tensor):
+        """
+        Apply Quick GELU activation.
+        
+        Args:
+            x (torch.Tensor): Input tensor
+            
+        Returns:
+            torch.Tensor: Activated tensor
+        """
         return x * torch.sigmoid(1.702 * x)
     
 class graph_transformer(nn.Module):
+    """
+    Graph Transformer model for processing graph structured data.
+    
+    Combines transformer architecture with graph neural network components
+    to process graph node features and edge structure.
+    """
+    
     def __init__(self, args):
+        """
+        Initialize the graph transformer.
+        
+        Args:
+            args: Configuration object containing model parameters including:
+                - gnn_width: Width of GNN layers
+                - gnn_layers: Number of GNN layers
+                - gnn_heads: Number of attention heads
+        """
         super().__init__()
         self.config = PretrainedConfig()
         self.gnn = Transformer(
@@ -232,6 +395,17 @@ class graph_transformer(nn.Module):
         self.proj = nn.Parameter(torch.randn(args.gnn_width, args.gnn_output) / args.gnn_width ** 0.5)
 
     def forward(self, g):
+        """
+        Process input graph through the transformer.
+        
+        Args:
+            g: Graph object containing:
+                - graph_node: Node feature tensor
+                - edge_index: Edge connectivity tensor
+                
+        Returns:
+            torch.Tensor: Processed node features
+        """
         x = g.graph_node
         edge_index = g.edge_index
         
@@ -251,7 +425,24 @@ def load_model(
     cpu_offloading: bool = False,
     debug: bool = False,
 ):
-    """Load a model from Hugging Face."""
+    """
+    Load a pretrained model from Hugging Face.
+    
+    Args:
+        model_path (str): Path or name of model on HuggingFace
+        device (str): Device to load model on ('cpu', 'cuda', 'mps')
+        num_gpus (int): Number of GPUs to use
+        max_gpu_memory (str, optional): Maximum GPU memory per device
+        load_8bit (bool, optional): Whether to load in 8-bit precision. Defaults to False
+        cpu_offloading (bool, optional): Whether to offload weights to CPU. Defaults to False
+        debug (bool, optional): Whether to print debug info. Defaults to False
+        
+    Returns:
+        AutoModelForCausalLM: Loaded model instance
+        
+    Raises:
+        ValueError: If device is invalid
+    """
     if device == "cpu":
         kwargs = {"torch_dtype": torch.float32}
     elif device == "cuda":
@@ -270,7 +461,6 @@ def load_model(
     else:
         raise ValueError(f"Invalid device: {device}")
 
-    # Load model
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         low_cpu_mem_usage=True,
@@ -333,7 +523,7 @@ def get_gpu_memory(num_gpus):
         with torch.cuda.device(i):
             device = torch.cuda.current_device()
             gpu_properties = torch.cuda.get_device_properties(device)
-            total_memory = gpu_properties.total_memory / (1024**3)  # Convert to GB
+            total_memory = gpu_properties.total_memory / (1024**3)  
             gpu_memory.append(total_memory)
     return gpu_memory
 
@@ -352,9 +542,23 @@ def maybe_zero_3(param, ignore_status=False, name=None):
     return param
 
 class ResidualAttentionBlock(nn.Module):
+    """
+    Transformer block with residual attention and MLP.
+    
+    Implements a standard transformer block with self-attention followed by MLP,
+    with layer normalization and residual connections.
+    """
+    
     def __init__(self, d_model: int, n_head: int, act_layer: Callable = nn.GELU):
+        """
+        Initialize the residual attention block.
+        
+        Args:
+            d_model (int): Hidden dimension size
+            n_head (int): Number of attention heads
+            act_layer (Callable, optional): Activation function. Defaults to GELU
+        """
         super().__init__()
-
         self.attn = nn.MultiheadAttention(d_model, n_head)
         self.ln_1 = LayerNorm(d_model)
         self.mlp = nn.Sequential(
@@ -369,15 +573,50 @@ class ResidualAttentionBlock(nn.Module):
         self.ln_2 = LayerNorm(d_model)
 
     def attention(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        """
+        Compute self-attention.
+        
+        Args:
+            x (torch.Tensor): Input tensor
+            attn_mask (torch.Tensor, optional): Attention mask
+            
+        Returns:
+            torch.Tensor: Self-attention output
+        """
         return self.attn(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
 
     def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        """
+        Forward pass through the block.
+        
+        Args:
+            x (torch.Tensor): Input tensor
+            attn_mask (torch.Tensor, optional): Attention mask
+            
+        Returns:
+            torch.Tensor: Processed tensor
+        """
         x = x + self.attention(self.ln_1(x), attn_mask=attn_mask)
         x = x + self.mlp(self.ln_2(x))
         return x
 
 class Transformer(nn.Module):
+    """
+    Full transformer model with multiple attention blocks.
+    
+    Stacks multiple ResidualAttentionBlocks to form a complete transformer.
+    """
+    
     def __init__(self, width: int, layers: int, heads: int, act_layer: Callable = nn.GELU):
+        """
+        Initialize the transformer.
+        
+        Args:
+            width (int): Hidden dimension size
+            layers (int): Number of transformer layers
+            heads (int): Number of attention heads per layer
+            act_layer (Callable, optional): Activation function. Defaults to GELU
+        """
         super().__init__()
         self.width = width
         self.layers = layers
@@ -386,12 +625,36 @@ class Transformer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        """
+        Forward pass through the transformer.
+        
+        Args:
+            x (torch.Tensor): Input tensor
+            attn_mask (torch.Tensor, optional): Attention mask
+            
+        Returns:
+            torch.Tensor: Processed tensor
+        """
         for r in self.resblocks:
             x = r(x, attn_mask=attn_mask)
         return x
 
 class SimpleTokenizer(object):
+    """
+    Basic tokenizer implementation with BPE encoding.
+    
+    Implements byte-pair encoding (BPE) tokenization with support for special tokens
+    and caching.
+    """
+    
     def __init__(self, bpe_path: str = default_bpe(), special_tokens=None):
+        """
+        Initialize the tokenizer.
+        
+        Args:
+            bpe_path (str, optional): Path to BPE vocabulary file
+            special_tokens (list, optional): Additional special tokens to add
+        """
         self.byte_encoder = bytes_to_unicode()
         self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
         merges = gzip.open(bpe_path).read().decode("utf-8").split("\n")
@@ -416,6 +679,15 @@ class SimpleTokenizer(object):
         self.all_special_ids = [self.encoder[t] for t in special_tokens]
 
     def bpe(self, token):
+        """
+        Apply byte-pair encoding to a token.
+        
+        Args:
+            token (str): Input token
+            
+        Returns:
+            str: BPE-encoded token
+        """
         if token in self.cache:
             return self.cache[token]
         word = tuple(token[:-1]) + (token[-1] + "</w>",)
@@ -457,6 +729,15 @@ class SimpleTokenizer(object):
         return word
 
     def encode(self, text):
+        """
+        Encode text into token IDs.
+        
+        Args:
+            text (str): Input text
+            
+        Returns:
+            list: List of token IDs
+        """
         bpe_tokens = []
         text = whitespace_clean(basic_clean(text)).lower()
         for token in re.findall(self.pat, text):
@@ -465,12 +746,30 @@ class SimpleTokenizer(object):
         return bpe_tokens
 
     def decode(self, tokens):
+        """
+        Decode token IDs back to text.
+        
+        Args:
+            tokens (list): List of token IDs
+            
+        Returns:
+            str: Decoded text
+        """
         text = "".join([self.decoder[token] for token in tokens])
         text = bytearray([self.byte_decoder[c] for c in text]).decode("utf-8", errors="replace").replace("</w>", " ")
         return text
 
 def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
-    """Returns the tokenized representation of given input string(s)"""
+    """
+    Tokenize text(s) with special tokens and padding.
+    
+    Args:
+        texts (Union[str, List[str]]): Input text or list of texts
+        context_length (int, optional): Maximum sequence length. Defaults to 77
+        
+    Returns:
+        torch.LongTensor: Tensor of token IDs with shape (batch_size, context_length)
+    """
     if isinstance(texts, str):
         texts = [texts]
 
@@ -488,10 +787,21 @@ def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.Lo
 
 _tokenizer = SimpleTokenizer()
 
-# Part 3: Graph Neural Network Components
+
 
 def gcn_conv(h, edge_index):
-    """Basic GCN convolution operation"""
+    """
+    Basic Graph Convolutional Network convolution operation.
+    
+    Implements the standard GCN propagation rule with normalized adjacency matrix.
+    
+    Args:
+        h (torch.Tensor): Node feature matrix
+        edge_index (torch.Tensor): Graph connectivity in COO format
+        
+    Returns:
+        torch.Tensor: Updated node features after convolution
+    """
     N, node_feas = h.shape
     edge_index, _ = remove_self_loops(edge_index)
     edge_index, _ = add_self_loops(edge_index, num_nodes=N)
@@ -515,7 +825,22 @@ def gcn_conv(h, edge_index):
     return h_prime
 
 class MPNN(nn.Module):
-    """Message Passing Neural Network implementation"""
+    """
+    Message Passing Neural Network implementation.
+    
+    A general framework for graph neural networks that updates node representations
+    via message passing between neighbors.
+    
+    Args:
+        in_channels (int): Input feature dimension
+        hidden_channels (int): Hidden layer dimension
+        out_channels (int): Output feature dimension
+        **kwargs: Additional arguments including:
+            - dropout (float): Dropout rate
+            - num_layers (int): Number of message passing layers
+            - if_param (bool): Whether to use learnable parameters
+    """
+    
     def __init__(self, in_channels, hidden_channels, out_channels, **kwargs):
         super(MPNN, self).__init__()
         self.config = PretrainedConfig()
@@ -536,11 +861,22 @@ class MPNN(nn.Module):
             self.reset_parameters()
 
     def reset_parameters(self):
+        """Initialize model parameters using Xavier initialization."""
         for mlp in self.fcs:
             nn.init.xavier_uniform_(mlp.weight, gain=1.414)
             nn.init.zeros_(mlp.bias)
 
     def forward(self, g, use_conv=True):
+        """
+        Forward pass through the MPNN.
+        
+        Args:
+            g: Graph object containing node features and connectivity
+            use_conv (bool, optional): Whether to use convolution. Defaults to True
+            
+        Returns:
+            torch.Tensor: Updated node features
+        """
         x = g.graph_node
         edge_index = g.edge_index
         try:
@@ -573,23 +909,40 @@ class MPNN(nn.Module):
 
 @dataclass
 class MetaHGTConvCfg:
-    """Configuration class for MetaHGT Convolution"""
+    """
+    Configuration class for Meta Heterogeneous Graph Transformer Convolution.
+    
+    Attributes:
+        in_channels (int): Input feature dimension
+        out_channels (int): Output feature dimension
+        heads (int): Number of attention heads
+        dynamic (bool): Whether to use dynamic weight generation
+    """
     in_channels: int
     out_channels: int
     heads: int
     dynamic: bool = True
 
 class MetaHGTConv(MessagePassing):
-    """Meta Heterogeneous Graph Transformer Convolution"""
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        heads: int = 1,
-        dynamic: bool = False,
-        text_cfg = None,
-        **kwargs,
-    ):
+    """
+    Meta Heterogeneous Graph Transformer Convolution layer.
+    
+    Implements attention-based message passing for heterogeneous graphs with
+    meta-learning capabilities for handling different types of nodes and edges.
+    """
+    
+    def __init__(self, in_channels, out_channels, heads=1, dynamic=False, text_cfg=None, **kwargs):
+        """
+        Initialize the MetaHGTConv layer.
+        
+        Args:
+            in_channels (int): Input feature dimension
+            out_channels (int): Output feature dimension
+            heads (int, optional): Number of attention heads. Defaults to 1
+            dynamic (bool, optional): Whether to use dynamic weights. Defaults to False
+            text_cfg: Text processing configuration
+            **kwargs: Additional arguments
+        """
         super().__init__(aggr='add', node_dim=0, **kwargs)
 
         self.config = PretrainedConfig()
@@ -622,7 +975,15 @@ class MetaHGTConv(MessagePassing):
         super().reset_parameters()
 
     def _cat(self, x_dict: Dict[str, Tensor]) -> Tuple[Tensor, Dict[str, int]]:
-        """Concatenates a dictionary of features."""
+        """
+        Concatenate features from different node types.
+        
+        Args:
+            x_dict (Dict[str, Tensor]): Dictionary of node features by type
+            
+        Returns:
+            Tuple[Tensor, Dict[str, int]]: Concatenated features and offset mapping
+        """
         cumsum = 0
         outs: List[Tensor] = []
         offset: Dict[str, int] = {}
@@ -637,7 +998,18 @@ class MetaHGTConv(MessagePassing):
         edge_index_dict: Dict[EdgeType, Adj], 
         edge_type_feas_dict: Dict[EdgeType, Tensor], 
     ) -> Tuple[Tensor, Tensor, Dict[EdgeType, int]]:
-        """Constructs the source node representations."""
+        """
+        Construct source node representations for attention.
+        
+        Args:
+            k_dict (Dict[str, Tensor]): Key vectors by node type
+            v_dict (Dict[str, Tensor]): Value vectors by node type
+            edge_index_dict (Dict[EdgeType, Adj]): Edge indices by type
+            edge_type_feas_dict (Dict[EdgeType, Tensor]): Edge type features
+            
+        Returns:
+            Tuple[Tensor, Tensor, Dict[EdgeType, int]]: Processed key and value vectors with offsets
+        """
         cumsum = 0
         num_edge_types = len(edge_index_dict.keys())
         H, D = self.heads, self.out_channels // self.heads
@@ -677,10 +1049,28 @@ class MetaHGTConv(MessagePassing):
         return k, v, offset
 
     def _construct_p_rel(self, edge_type_feas_dict: Dict[EdgeType, Tensor]):
+        """
+        Construct relation-specific attention weights.
+        
+        Args:
+            edge_type_feas_dict (Dict[EdgeType, Tensor]): Edge type features
+            
+        Returns:
+            Dict[EdgeType, Tensor]: Processed attention weights for each edge type
+        """
         p_rel = {k: self.p_relTrans(v).unsqueeze(0) for k, v in edge_type_feas_dict.items()}
         return p_rel
 
     def _construct_skip(self, node_type_feas_dict: Dict[EdgeType, Tensor]):
+        """
+        Construct skip connection weights.
+        
+        Args:
+            node_type_feas_dict (Dict[EdgeType, Tensor]): Node type features
+            
+        Returns:
+            Dict[EdgeType, Tensor]: Skip connection weights for each node type
+        """
         skip = {k: self.skipTrans(v) for k, v in node_type_feas_dict.items()}
         return skip
 
@@ -744,6 +1134,23 @@ class MetaHGTConv(MessagePassing):
     def message(self, k_j: Tensor, q_i: Tensor, v_j: Tensor, edge_attr: Tensor,
                 index: Tensor, ptr: Optional[Tensor],
                 size_i: Optional[int]) -> Tensor:
+        """
+        Compute messages in the message passing framework.
+        
+        Implements the attention-based message computation between nodes.
+        
+        Args:
+            k_j (Tensor): Key vectors of source nodes
+            q_i (Tensor): Query vectors of target nodes
+            v_j (Tensor): Value vectors of source nodes
+            edge_attr (Tensor): Edge attributes
+            index (Tensor): Target node indices
+            ptr (Optional[Tensor]): Compressed sparse format pointer
+            size_i (Optional[int]): Number of target nodes
+            
+        Returns:
+            Tensor: Computed messages
+        """
         alpha = (q_i * k_j).sum(dim=-1) * edge_attr
         alpha = alpha / math.sqrt(q_i.size(-1))
         alpha = softmax(alpha, index, ptr, size_i)
@@ -751,11 +1158,29 @@ class MetaHGTConv(MessagePassing):
         return out.view(-1, self.out_channels)
 
     def __repr__(self) -> str:
+        """
+        Get string representation of the layer.
+        
+        Returns:
+            str: Layer description with output channels and number of heads
+        """
         return (f'{self.__class__.__name__}(-1, {self.out_channels}, '
                 f'heads={self.heads})')
 
 class GNN(MessagePassing):
-    """Graph Neural Network implementation"""
+    """
+    Graph Neural Network implementation.
+    
+    A basic GNN that uses message passing to update node representations.
+    Includes learnable weight matrices and bias terms.
+    
+    Args:
+        args: Configuration object containing:
+            - gnn_hid (int): Hidden dimension size
+            - gnn_input (int): Input feature dimension
+            - gnn_output (int): Output feature dimension
+    """
+    
     def __init__(self, args, **kwargs):
         super(GNN, self).__init__(aggr='add', **kwargs)
         self.config = PretrainedConfig()
@@ -773,6 +1198,18 @@ class GNN(MessagePassing):
 
     @staticmethod
     def norm(edge_index, num_nodes, improved=False, dtype=None):
+        """
+        Compute normalized edge weights.
+        
+        Args:
+            edge_index (Tensor): Edge indices
+            num_nodes (int): Number of nodes in graph
+            improved (bool, optional): Whether to use improved normalization. Defaults to False
+            dtype (torch.dtype, optional): Data type of weights
+            
+        Returns:
+            Tuple[Tensor, Tensor]: Normalized edge indices and weights
+        """
         edge_weight = torch.ones((edge_index.size(1),), dtype=dtype,
                                  device=edge_index.device)
 
@@ -816,10 +1253,20 @@ class GNN(MessagePassing):
 
     def parameters(self):
         return self.vars
-# Part 4: CLIP Components
+
 
 @dataclass
 class CLIPTextCfg:
+    """
+    Configuration class for CLIP text encoder.
+    
+    Attributes:
+        context_length (int): Maximum sequence length for text
+        vocab_size (int): Size of vocabulary
+        width (int): Hidden dimension size
+        heads (int): Number of attention heads
+        layers (int): Number of transformer layers
+    """
     context_length: int
     vocab_size: int
     width: int
@@ -828,7 +1275,15 @@ class CLIPTextCfg:
 
 @dataclass
 class ClipOutputFeatures:
-    """Data class of features from AlbefFeatureExtractor."""
+    """
+    Data class for storing features extracted by CLIP model.
+    
+    Attributes:
+        image_embeds (torch.FloatTensor, optional): Raw image embeddings
+        image_embeds_proj (torch.FloatTensor, optional): Projected image embeddings
+        text_embeds (torch.FloatTensor, optional): Raw text embeddings
+        text_embeds_proj (torch.FloatTensor, optional): Projected text embeddings
+    """
     image_embeds: Optional[torch.FloatTensor] = None
     image_embeds_proj: Optional[torch.FloatTensor] = None
     text_embeds: Optional[torch.FloatTensor] = None
@@ -836,18 +1291,50 @@ class ClipOutputFeatures:
 
 @dataclass
 class ClipOutput:
+    """
+    Output class for CLIP model.
+    
+    Attributes:
+        intermediate_output (ClipOutputFeatures, optional): Intermediate feature outputs
+        logit_scale_exp (torch.FloatTensor, optional): Exponential of learnable temperature parameter
+        loss (torch.FloatTensor, optional): Contrastive loss value
+    """
     intermediate_output: Optional[ClipOutputFeatures] = None
     logit_scale_exp: Optional[torch.FloatTensor] = None
     loss: Optional[torch.FloatTensor] = None
 
 @dataclass
 class HeteClipOutputFeatures:
+    """
+    Data class for storing features from heterogeneous CLIP model.
+    
+    Similar to ClipOutputFeatures but replaces image embeddings with graph embeddings
+    for handling heterogeneous graph data.
+    
+    Attributes:
+        graph_embeds (torch.FloatTensor, optional): Raw graph embeddings
+        graph_embeds_proj (torch.FloatTensor, optional): Projected graph embeddings
+        text_embeds (torch.FloatTensor, optional): Raw text embeddings
+        text_embeds_proj (torch.FloatTensor, optional): Projected text embeddings
+    """
     graph_embeds: Optional[torch.FloatTensor] = None
     graph_embeds_proj: Optional[torch.FloatTensor] = None
     text_embeds: Optional[torch.FloatTensor] = None
     text_embeds_proj: Optional[torch.FloatTensor] = None
 
 class CLIP(BaseModel):
+    """
+    CLIP model adapted for graph-text contrastive learning.
+    
+    Implements a CLIP-style architecture that learns joint embeddings of 
+    heterogeneous graphs and text descriptions.
+    
+    Args:
+        embed_dim (int): Joint embedding dimension
+        graph_cfg (MetaHGTConvCfg): Configuration for graph encoder
+        text_cfg (CLIPTextCfg): Configuration for text encoder
+        quick_gelu (bool, optional): Whether to use quick GELU activation. Defaults to False
+    """
     def __init__(
         self,
         embed_dim: int,
@@ -899,11 +1386,13 @@ class CLIP(BaseModel):
 
     @property
     def loss(self):
+        """Get the contrastive loss function."""
         if self._loss is None:
             self._loss = HeteClipLoss()
         return self._loss
 
     def init_parameters(self):
+        """Initialize model parameters with proper scaling."""
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
         nn.init.constant_(self.logit_scale, np.log(1 / 0.07))
@@ -921,12 +1410,28 @@ class CLIP(BaseModel):
             nn.init.normal_(self.text_projection, std=self.transformer.width ** -0.5)
 
     def build_attention_mask(self):
+        """
+        Build causal attention mask for transformer.
+        
+        Returns:
+            torch.Tensor: Attention mask with upper triangular set to -inf
+        """
         mask = torch.empty(self.context_length, self.context_length)
         mask.fill_(float("-inf"))
         mask.triu_(1)
         return mask
 
     def encode_graph(self, graph: List[Dict[str, torch.Tensor]], des_order: List[List[str]]):
+        """
+        Encode heterogeneous graph inputs.
+        
+        Args:
+            graph (List[Dict[str, torch.Tensor]]): List of graph dictionaries
+            des_order (List[List[str]]): Node type ordering for each graph
+            
+        Returns:
+            torch.Tensor: Graph embeddings
+        """
         graph_list = []
         for graph_dict in graph:
             graph_list.append(self.graph_encoder(graph_dict.x_dict, graph_dict.edge_index_dict))
@@ -938,6 +1443,15 @@ class CLIP(BaseModel):
         return graph_embeds
 
     def encode_text(self, text):
+        """
+        Encode text inputs through transformer.
+        
+        Args:
+            text: Input text tokens
+            
+        Returns:
+            torch.Tensor: Text embeddings
+        """
         x = self.token_embedding(text)
         x = x + self.positional_embedding
         x = x.permute(1, 0, 2)
@@ -948,6 +1462,18 @@ class CLIP(BaseModel):
         return x
 
     def forward(self, samples):
+        """
+        Forward pass computing contrastive loss between graph and text.
+        
+        Args:
+            samples: Dictionary containing:
+                - graph (List[Dict]): Graph inputs
+                - text_input (List[str]): Text inputs
+                - des_order (List[List[str]]): Node type ordering
+                
+        Returns:
+            ClipOutput: Model outputs including features and loss
+        """
         graph: List[Dict] = samples.get("graph")
         text: List[str] = samples.get("text_input")
         des_order: List[List[str]] = samples.get("des_order")
@@ -981,6 +1507,17 @@ class CLIP(BaseModel):
         )
 
     def extract_features(self, samples):
+        """
+        Extract features without computing loss.
+        
+        Similar to forward() but only returns embeddings without loss computation.
+        
+        Args:
+            samples: Dictionary containing graph and text inputs
+            
+        Returns:
+            HeteClipOutputFeatures: Extracted features
+        """
         graph: List[Dict] = samples.get("graph")
         text: List[str] = samples.get("text_input")
         des_order: List[List[str]] = samples.get("des_order")
@@ -1007,17 +1544,43 @@ class CLIP(BaseModel):
             text_embeds_proj=text_features,
         )
 
-# Part 5A: LLaMA Components - First Half
+
 
 class GraphLlamaConfig(LlamaConfig):
+    """
+    Configuration class for GraphLLaMA model.
+    
+    Extends LlamaConfig to include graph-specific configuration options.
+    """
     model_type = "GraphLlama"
 
 class GraphPretrainConfig:
+    """
+    Configuration class for graph pre-training.
+    
+    A simple wrapper that converts dictionary config to object attributes.
+    
+    Args:
+        dictionary (dict): Configuration dictionary
+    """
     def __init__(self, dictionary):
         for key, value in dictionary.items():
             setattr(self, key, value)
 
-def load_model_pretrained(model_name, pretrain_model_path): 
+def load_model_pretrained(model_name, pretrain_model_path):
+    """
+    Load a pretrained model from checkpoint.
+    
+    Args:
+        model_name: Model class to instantiate
+        pretrain_model_path (str): Path to pretrained model checkpoint
+        
+    Returns:
+        Tuple[nn.Module, GraphPretrainConfig]: Loaded model and its configuration
+        
+    Raises:
+        AssertionError: If config.json is missing
+    """
     assert os.path.exists(os.path.join(pretrain_model_path, 'config.json')), 'config.json missing'
     with open(os.path.join(pretrain_model_path, 'config.json'), 'r') as f:
         config_dict = json.load(f)
@@ -1031,7 +1594,20 @@ def load_model_pretrained(model_name, pretrain_model_path):
     model.load_state_dict(state_dict)
     return model, args
 
-def load_metahgt_pretrained(model_name, pretrain_model_path): 
+def load_metahgt_pretrained(model_name, pretrain_model_path):
+    """
+    Load a pretrained MetaHGT model from checkpoint.
+    
+    Args:
+        model_name: Should be MetaHGTConv class
+        pretrain_model_path (str): Path to pretrained model checkpoint
+        
+    Returns:
+        MetaHGTConv: Loaded model instance
+        
+    Raises:
+        AssertionError: If config files are missing or model_name is incorrect
+    """
     assert os.path.exists(os.path.join(pretrain_model_path, 'graph_config.json')), 'graph_config.json missing'
     with open(os.path.join(pretrain_model_path, 'graph_config.json'), 'r') as f:
         graph_config_dict = json.load(f)
@@ -1063,11 +1639,30 @@ def load_metahgt_pretrained(model_name, pretrain_model_path):
     return model
 
 def transfer_param_tograph(clip_graph, gnn):
+    """
+    Transfer parameters from CLIP graph encoder to GNN.
+    
+    Args:
+        clip_graph: Source CLIP model containing graph encoder
+        gnn: Target GNN model
+        
+    Returns:
+        nn.Module: GNN with transferred parameters
+    """
     gnn_state_dict = clip_graph.gnn.state_dict()
     gnn.load_state_dict(gnn_state_dict)
     return gnn
 
 class GraphLlamaModel(LlamaModel):
+    """
+    GraphLLaMA model that combines LLaMA with graph processing capabilities.
+    
+    Extends LlamaModel to handle graph inputs through various graph neural network
+    architectures including MPNN, GCN, and graph transformers.
+    
+    Args:
+        config (LlamaConfig): Model configuration
+    """
     config_class = GraphLlamaConfig
 
     def __init__(self, config: LlamaConfig):
@@ -1104,6 +1699,12 @@ class GraphLlamaModel(LlamaModel):
             self.graph_projector = nn.Linear(config.graph_hidden_size, config.hidden_size)
 
     def get_graph_tower(self):
+        """
+        Get the graph processing component.
+        
+        Returns:
+            nn.Module: Graph neural network module
+        """
         graph_tower = getattr(self, 'graph_tower', None)
         if type(graph_tower) is list:
             graph_tower = graph_tower[0]
@@ -1111,6 +1712,15 @@ class GraphLlamaModel(LlamaModel):
 
     def initialize_graph_modules(self, graph_tower, graph_select_layer,
                                pretrain_graph_mlp_adapter=None, fsdp=None):
+        """
+        Initialize graph processing modules.
+        
+        Args:
+            graph_tower (str): Type of graph neural network to use
+            graph_select_layer (int): Which layer to select features from
+            pretrain_graph_mlp_adapter (str, optional): Path to pretrained adapter weights
+            fsdp (list, optional): FSDP configuration
+        """
         self.config.graph_tower = graph_tower
 
         if not hasattr(self, 'graph_tower'):
@@ -1159,8 +1769,6 @@ class GraphLlamaModel(LlamaModel):
             graph_projector_weights = torch.load(pretrain_graph_mlp_adapter, map_location='cpu')
             self.graph_projector.load_state_dict({k.split('.')[-1]: v for k, v in graph_projector_weights.items()})
 
-# Part 5B: LLaMA Components - Second Half
-
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -1173,6 +1781,27 @@ class GraphLlamaModel(LlamaModel):
         graph_data: Optional[Data] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
+        """
+        Forward pass of the GraphLLaMA model.
+        
+        Processes both text and graph inputs through the model, combining them
+        via graph-augmented attention mechanisms.
+        
+        Args:
+            input_ids (torch.LongTensor, optional): Input token IDs
+            attention_mask (torch.Tensor, optional): Attention mask
+            past_key_values (List[torch.FloatTensor], optional): Cached key/values for faster inference
+            inputs_embeds (torch.FloatTensor, optional): Pre-computed input embeddings
+            use_cache (bool, optional): Whether to use past key/values
+            output_attentions (bool, optional): Whether to output attention weights
+            output_hidden_states (bool, optional): Whether to output all hidden states
+            graph_data (Data, optional): Input graph data
+            return_dict (bool, optional): Whether to return a dictionary output
+            
+        Returns:
+            Union[Tuple, BaseModelOutputWithPast]: Model outputs including hidden states,
+                attention weights and past key/values if requested
+        """
         orig_embeds_params = getattr(self, 'orig_embeds_params', None)
 
         if inputs_embeds is None:
@@ -1260,6 +1889,15 @@ class GraphLlamaModel(LlamaModel):
         )
 
 class GraphLlamaForCausalLM(LlamaForCausalLM):
+    """
+    GraphLLaMA model for causal language modeling.
+    
+    Extends LlamaForCausalLM to support graph-augmented language modeling by
+    incorporating graph structure information into the generation process.
+    
+    Args:
+        config (GraphLlamaConfig): Model configuration
+    """
     config_class = GraphLlamaConfig
 
     def __init__(self, config):
@@ -1269,9 +1907,11 @@ class GraphLlamaForCausalLM(LlamaForCausalLM):
         self.post_init()
 
     def get_model(self):
+        """Get the underlying GraphLlamaModel."""
         return self.model
 
     def get_graph_tower(self):
+        """Get the graph processing component."""
         return self.get_model().get_graph_tower()
 
     def forward(
@@ -1331,6 +1971,19 @@ class GraphLlamaForCausalLM(LlamaForCausalLM):
     def prepare_inputs_for_generation(
         self, input_ids, past_key_values=None, attention_mask=None, inputs_embeds=None, **kwargs
     ):
+        """
+        Prepare inputs for text generation.
+        
+        Args:
+            input_ids: Input token IDs
+            past_key_values: Cached key/values from previous forward passes
+            attention_mask: Attention mask
+            inputs_embeds: Pre-computed input embeddings
+            **kwargs: Additional arguments
+            
+        Returns:
+            dict: Dictionary of model inputs
+        """
         if past_key_values:
             input_ids = input_ids[:, -1:]
 
@@ -1351,6 +2004,16 @@ class GraphLlamaForCausalLM(LlamaForCausalLM):
 
     def initialize_graph_tokenizer(self, use_graph_start_end, tokenizer, device,
                                  tune_graph_mlp_adapter=False, pretrain_graph_mlp_adapter=None):
+        """
+        Initialize tokenizer for graph inputs.
+        
+        Args:
+            use_graph_start_end (bool): Whether to use special graph tokens
+            tokenizer: Base tokenizer to extend
+            device: Device to place new tokens on
+            tune_graph_mlp_adapter (bool): Whether to tune graph MLP adapter
+            pretrain_graph_mlp_adapter (str, optional): Path to pretrained adapter
+        """
         vision_config = self.get_graph_tower().config
         vision_config.use_graph_start_end = use_graph_start_end
         tokenizer.add_tokens([DEFAULT_GRAPH_PATCH_TOKEN], special_tokens=True)
@@ -1391,15 +2054,30 @@ class GraphLlamaForCausalLM(LlamaForCausalLM):
 
         vision_config.graph_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_GRAPH_PATCH_TOKEN])[0]
 
-# Register the models
+
 AutoConfig.register("GraphLlama", GraphLlamaConfig)
 AutoModelForCausalLM.register(GraphLlamaConfig, GraphLlamaForCausalLM)
-# Part 6: HeteroLLaMA Components
+
 
 class HeteroLlamaConfig(LlamaConfig):
+    """
+    Configuration class for HeteroLLaMA model.
+    
+    Extends LlamaConfig to include configuration options for heterogeneous graph processing.
+    """
     model_type = "HeteroLlama"
 
 class HeteroLlamaModel(LlamaModel):
+    """
+    HeteroLLaMA model that handles heterogeneous graph inputs.
+    
+    Extends LlamaModel to process heterogeneous graphs with different node and edge types
+    through specialized graph neural networks.
+    
+    Args:
+        config (LlamaConfig): Model configuration
+    """
+    
     config_class = HeteroLlamaConfig
 
     def __init__(self, config: LlamaConfig):
@@ -1476,6 +2154,27 @@ class HeteroLlamaModel(LlamaModel):
         return_dict: Optional[bool] = None,
         hetero_key_order: Optional[List[List[str]]] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
+        """
+        Forward pass of the HeteroLLaMA model.
+        
+        Processes heterogeneous graph inputs along with text through the model.
+        
+        Args:
+            input_ids (torch.LongTensor, optional): Input token IDs
+            attention_mask (torch.Tensor, optional): Attention mask
+            past_key_values (List[torch.FloatTensor], optional): Cached key/values
+            inputs_embeds (torch.FloatTensor, optional): Pre-computed input embeddings
+            use_cache (bool, optional): Whether to use past key/values
+            output_attentions (bool, optional): Whether to output attention weights
+            output_hidden_states (bool, optional): Whether to output all hidden states
+            graph_data (Data, optional): Input heterogeneous graph data
+            return_dict (bool, optional): Whether to return a dictionary output
+            hetero_key_order (List[List[str]], optional): Node type ordering for heterogeneous graphs
+            
+        Returns:
+            Union[Tuple, BaseModelOutputWithPast]: Model outputs including hidden states,
+                attention weights and past key/values if requested
+        """
         orig_embeds_params = getattr(self, 'orig_embeds_params', None)
 
         if inputs_embeds is None:
@@ -1566,6 +2265,15 @@ class HeteroLlamaModel(LlamaModel):
         )
 
 class HeteroLlamaForCausalLM(LlamaForCausalLM):
+    """
+    HeteroLLaMA model for causal language modeling with heterogeneous graphs.
+    
+    Extends LlamaForCausalLM to support language modeling conditioned on
+    heterogeneous graph structures.
+    
+    Args:
+        config (HeteroLlamaConfig): Model configuration
+    """
     config_class = HeteroLlamaConfig
 
     def __init__(self, config):
@@ -1575,9 +2283,11 @@ class HeteroLlamaForCausalLM(LlamaForCausalLM):
         self.post_init()
 
     def get_model(self):
+        """Get the underlying HeteroLlamaModel."""
         return self.model
 
     def get_graph_tower(self):
+        """Get the heterogeneous graph processing component."""
         return self.get_model().get_graph_tower()
 
     def forward(
@@ -1711,15 +2421,27 @@ class HeteroLlamaForCausalLM(LlamaForCausalLM):
 
         vision_config.graph_patch_token = tokenizer.convert_tokens_to_ids([DEFAULT_GRAPH_PATCH_TOKEN])[0]
 
-# Register the models
+
 AutoConfig.register("HeteroLlama", HeteroLlamaConfig)
 AutoModelForCausalLM.register(HeteroLlamaConfig, HeteroLlamaForCausalLM)
 
-# Part 7: Training Components
 
 def _tokenize_fn(strings: Sequence[str],
                  tokenizer: transformers.PreTrainedTokenizer) -> Dict:
-    """Tokenize a list of strings."""
+    """
+    Tokenize a list of strings.
+    
+    Args:
+        strings (Sequence[str]): List of input strings to tokenize
+        tokenizer (PreTrainedTokenizer): Tokenizer to use
+        
+    Returns:
+        Dict: Dictionary containing:
+            - input_ids: Token IDs
+            - labels: Labels for language modeling
+            - input_ids_lens: Lengths of input sequences
+            - labels_lens: Lengths of label sequences
+    """
     tokenized_list = [
         tokenizer(
             text,
@@ -1744,6 +2466,14 @@ def _tokenize_fn(strings: Sequence[str],
     )
 
 def _mask_targets(target, tokenized_lens, speakers):
+    """
+    Mask target tokens for dialogue modeling.
+    
+    Args:
+        target: Target token IDs to mask
+        tokenized_lens: List of token sequence lengths
+        speakers: List of speaker identifiers
+    """
     cur_idx = tokenized_lens[0]
     tokenized_lens = tokenized_lens[1:]
     target[:cur_idx] = IGNORE_INDEX
@@ -1757,7 +2487,14 @@ def smart_tokenizer_and_embedding_resize(
     tokenizer: transformers.PreTrainedTokenizer,
     model: transformers.PreTrainedModel,
 ):
-    """Resize tokenizer and embedding."""
+    """
+    Resize tokenizer and embedding layers to accommodate new special tokens.
+    
+    Args:
+        special_tokens_dict (Dict): Dictionary of special tokens to add
+        tokenizer (PreTrainedTokenizer): Tokenizer to modify
+        model (PreTrainedModel): Model whose embeddings need resizing
+    """
     num_new_tokens = tokenizer.add_special_tokens(special_tokens_dict)
     model.resize_token_embeddings(len(tokenizer))
 
@@ -1773,16 +2510,31 @@ def smart_tokenizer_and_embedding_resize(
         input_embeddings[-num_new_tokens:] = input_embeddings_avg
         output_embeddings[-num_new_tokens:] = output_embeddings_avg
 
-
 def unwrap_model(model: nn.Module) -> nn.Module:
-    """Recursively unwraps a model from potential containers."""
+    """
+    Recursively unwrap a model from potential containers.
+    
+    Args:
+        model (nn.Module): Model to unwrap
+        
+    Returns:
+        nn.Module: Unwrapped model
+    """
     if hasattr(model, "module"):
         return unwrap_model(model.module)
     else:
         return model
 
 def find_all_linear_names(model):
-    """Find all linear layer names in the model."""
+    """
+    Find all linear layer names in the model.
+    
+    Args:
+        model: Model to analyze
+        
+    Returns:
+        list: List of linear layer names, excluding lm_head
+    """
     cls = torch.nn.Linear
     lora_module_names = set()
     for name, module in model.named_modules():
@@ -1795,7 +2547,15 @@ def find_all_linear_names(model):
     return list(lora_module_names)
 
 def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str):
-    """Collects the state dict and dump to disk."""
+    """
+    Collects the state dict and saves model to disk safely.
+    
+    Handles DeepSpeed and regular model saving with proper synchronization.
+    
+    Args:
+        trainer (transformers.Trainer): HuggingFace trainer instance
+        output_dir (str): Directory to save model
+    """
     if trainer.deepspeed:
         torch.cuda.synchronize()
         trainer.save_model(output_dir)
@@ -1811,6 +2571,19 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: st
         trainer._save(output_dir, state_dict=cpu_state_dict)
 
 def get_peft_state_maybe_zero_3(named_params, bias):
+    """
+    Get PEFT state dict handling DeepSpeed ZeRO-3.
+    
+    Args:
+        named_params: Named parameters from model
+        bias (str): Bias handling mode ('none', 'all', or 'lora_only')
+        
+    Returns:
+        dict: State dict with gathered parameters
+        
+    Raises:
+        NotImplementedError: If bias mode is not recognized
+    """
     if bias == "none":
         to_return = {k: t for k, t in named_params if "lora_" in k}
     elif bias == "all":
@@ -1835,6 +2608,16 @@ def get_peft_state_maybe_zero_3(named_params, bias):
     return to_return
 
 def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
+    """
+    Get non-LoRA PEFT state dict handling DeepSpeed ZeRO-3.
+    
+    Args:
+        named_params: Named parameters from model
+        require_grad_only (bool, optional): Whether to only include parameters requiring gradients. Defaults to True
+        
+    Returns:
+        dict: State dict with gathered parameters
+    """
     to_return = {k: t for k, t in named_params if "lora_" not in k}
     if require_grad_only:
         to_return = {k: t for k, t in to_return.items() if t.requires_grad}
@@ -1842,6 +2625,17 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
     return to_return
 
 def maybe_zero_3(param, ignore_status=False, name=None):
+    """
+    Handle DeepSpeed ZeRO-3 parameters.
+    
+    Args:
+        param: Model parameter
+        ignore_status (bool, optional): Whether to ignore parameter status. Defaults to False
+        name (str, optional): Parameter name for logging. Defaults to None
+        
+    Returns:
+        torch.Tensor: Gathered parameter data
+    """
     from deepspeed import zero
     from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
     if hasattr(param, "ds_id"):
@@ -1854,9 +2648,18 @@ def maybe_zero_3(param, ignore_status=False, name=None):
         param = param.detach().cpu().clone()
     return param
 
-# download cached file
 def download_cached_file(url: str, check_hash: bool = True, progress: bool = True) -> str:
-    """Download a file from url and cache it locally."""
+    """
+    Download a file from URL and cache it locally.
+    
+    Args:
+        url (str): URL to download from
+        check_hash (bool, optional): Whether to verify file hash. Defaults to True
+        progress (bool, optional): Whether to show progress bar. Defaults to True
+        
+    Returns:
+        str: Path to cached file
+    """
     from torch.hub import download_url_to_file, get_dir
     from urllib.parse import urlparse
     import os
@@ -1871,8 +2674,20 @@ def download_cached_file(url: str, check_hash: bool = True, progress: bool = Tru
 
     return cached_file
 
-# linear
+
 class MetaHeteroLinear(nn.Module):
+    """
+    Meta-learning based linear layer for heterogeneous inputs.
+    
+    Implements a dynamic or static linear transformation that can handle
+    different types of inputs through meta-learning.
+    
+    Args:
+        text_width (int): Width of text embeddings for generating weights
+        in_features (int): Input feature dimension
+        out_features (int): Output feature dimension
+        dynamic (bool, optional): Whether to use dynamic weight generation. Defaults to True
+    """
     def __init__(self, text_width: int, in_features: int, out_features: int, dynamic: bool = True):
         super().__init__()
         self.text_width = text_width
@@ -1888,6 +2703,17 @@ class MetaHeteroLinear(nn.Module):
             self.bias = nn.Parameter(torch.zeros(out_features))
 
     def forward(self, x: Tensor, type_id: Tensor, type_embed_dict: Dict[int, Tensor]) -> Tensor:
+        """
+        Forward pass with type-specific transformations.
+        
+        Args:
+            x (Tensor): Input features
+            type_id (Tensor): Type IDs for each input
+            type_embed_dict (Dict[int, Tensor]): Type embeddings dictionary
+            
+        Returns:
+            Tensor: Transformed features
+        """
         if self.dynamic:
             weight = []
             bias = []
@@ -1908,6 +2734,18 @@ class MetaHeteroLinear(nn.Module):
         return F.linear(x, weight, bias)
 
 class MetaHeteroDictLinear(nn.Module):
+    """
+    Meta-learning based linear layer for dictionary of heterogeneous inputs.
+    
+    Similar to MetaHeteroLinear but handles dictionary inputs where each key
+    represents a different node/edge type.
+    
+    Args:
+        text_width (int): Width of text embeddings for generating weights
+        in_features (int): Input feature dimension
+        out_features (int): Output feature dimension
+        dynamic (bool, optional): Whether to use dynamic weight generation. Defaults to True
+    """
     def __init__(self, text_width: int, in_features: int, out_features: int, dynamic: bool = True):
         super().__init__()
         self.text_width = text_width
@@ -1923,6 +2761,16 @@ class MetaHeteroDictLinear(nn.Module):
             self.bias = nn.Parameter(torch.zeros(out_features))
 
     def forward(self, x_dict: Dict[str, Tensor], type_embed_dict: Dict[str, Tensor]) -> Dict[str, Tensor]:
+        """
+        Forward pass with type-specific transformations on dictionary inputs.
+        
+        Args:
+            x_dict (Dict[str, Tensor]): Dictionary of input features by type
+            type_embed_dict (Dict[str, Tensor]): Dictionary of type embeddings
+            
+        Returns:
+            Dict[str, Tensor]: Dictionary of transformed features by type
+        """
         out_dict = {}
         for node_type, x in x_dict.items():
             if self.dynamic:
@@ -1935,14 +2783,31 @@ class MetaHeteroDictLinear(nn.Module):
             out_dict[node_type] = F.linear(x, weight, bias)
         return out_dict
 
-# loss
+
 class HeteClipLoss(nn.Module):
+    """
+    Contrastive loss for heterogeneous CLIP model.
+    
+    Implements InfoNCE-style contrastive loss between graph and text embeddings
+    with temperature scaling.
+    """
     def __init__(self):
         super().__init__()
         self.labels = None
         self.last_local_batch_size = None
 
     def forward(self, graph_features, text_features, logit_scale):
+        """
+        Compute contrastive loss between graph and text features.
+        
+        Args:
+            graph_features (Tensor): Graph embeddings
+            text_features (Tensor): Text embeddings
+            logit_scale (Tensor): Temperature scaling factor
+            
+        Returns:
+            Tensor: Contrastive loss value
+        """
         device = graph_features.device
         local_batch_size = graph_features.shape[0]
 
@@ -1951,11 +2816,10 @@ class HeteClipLoss(nn.Module):
             self.labels = torch.LongTensor(self.labels).to(device)
             self.last_local_batch_size = local_batch_size
 
-        # normalized features
+
         graph_features = F.normalize(graph_features, dim=-1)
         text_features = F.normalize(text_features, dim=-1)
 
-        # cosine similarity as logits
         logits_per_graph = logit_scale * graph_features @ text_features.t()
         logits_per_text = logits_per_graph.t()
 
@@ -1966,7 +2830,6 @@ class HeteClipLoss(nn.Module):
 
         return loss
 
-# add prompt
 openai_imagenet_template = [
     lambda c: f"a photo of a {c}.",
     lambda c: f"a photograph of a {c}.",

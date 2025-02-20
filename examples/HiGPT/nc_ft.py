@@ -406,20 +406,31 @@ def unwrap_model(model: nn.Module) -> nn.Module:
     Args:
         model (`torch.nn.Module`): The model to unwrap.
     """
-    # since there could be multiple levels of wrapping, unwrap recursively
+
     if hasattr(model, "module"):
         return unwrap_model(model.module)
     else:
         return model
 
 class GraphChatTrainer(Trainer):
+    """Custom trainer class for graph-based chat models.
+    
+    Extends the Hugging Face Trainer class with specialized functionality for 
+    saving graph model components.
+    """
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        """Save model weights with special handling of graph components.
+        
+        Args:
+            output_dir (str, optional): Directory to save model weights.
+            state_dict (dict, optional): Model state dictionary to save.
+        """
         if getattr(self.args, 'tune_graph_mlp_adapter', False):
-            # Save the model
+
             _state_dict = state_dict
             if _state_dict is None:
-                # Only save the model itself if we are using distributed training
+
                 model_to_save = unwrap_model(self.model)
                 _state_dict = model_to_save.state_dict()
 
@@ -443,20 +454,46 @@ class GraphChatTrainer(Trainer):
 
 @dataclass
 class ModelArguments:
+    """Arguments pertaining to which model/config/tokenizer we are going to fine-tune.
+    
+    Attributes:
+        model_name_or_path (str): Path to pretrained model or model identifier from huggingface.co/models.
+        version (str): Model version identifier.
+        freeze_backbone (bool): Whether to freeze the backbone model parameters.
+        tune_graph_mlp_adapter (bool): Whether to tune the graph MLP adapter.
+        graph_tower (str): Type of graph neural network tower to use.
+        graph_select_layer (int): Which layer to select for graph representation.
+        pretrain_graph_mlp_adapter (str): Path to pretrained graph MLP adapter weights.
+        use_graph_start_end (bool): Whether to use special graph start/end tokens.
+    """
     model_name_or_path: Optional[str] = field(default="facebook/opt-125m")
     version: Optional[str] = field(default="v0")
     freeze_backbone: bool = field(default=False)
     tune_graph_mlp_adapter: bool = field(default=False)
     graph_tower: Optional[str] = field(default=None)
-    graph_select_layer: Optional[int] = field(default=-1)   
+    graph_select_layer: Optional[int] = field(default=-1)
     pretrain_graph_mlp_adapter: Optional[str] = field(default=None)
     use_graph_start_end: bool = field(default=False)
 
 
 @dataclass
 class DataArguments:
+    """Arguments pertaining to what data we are going to input into the model.
+    
+    Attributes:
+        data_path (str): Path to the training data.
+        lazy_preprocess (bool): Whether to use lazy preprocessing.
+        is_graph (bool): Whether the data contains graph structures.
+        sep_graph_conv_front (bool): Whether to separate graph convolutions at front.
+        graph_token_len (int): Length of graph tokens.
+        graph_content (str): Content type of the graph.
+        graph_root (str): Root directory for graph data.
+        image_aspect_ratio (str): Aspect ratio for images.
+        hetero_key_path (str): Path to heterogeneous graph keys.
+        num_shot (int): Number of shots for few-shot learning.
+    """
     data_path: str = field(default=None,
-                           metadata={"help": "Path to the training data."})
+                          metadata={"help": "Path to the training data."})
     lazy_preprocess: bool = False
     is_graph: bool = False
     sep_graph_conv_front: bool = False
@@ -470,6 +507,26 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
+    """Training arguments for the model.
+    
+    Attributes:
+        cache_dir (str): Directory for caching model and data.
+        optim (str): Optimizer to use, default is "adamw_torch".
+        remove_unused_columns (bool): Whether to remove unused columns from datasets.
+        freeze_graph_mlp_adapter (bool): Whether to freeze graph MLP adapter parameters.
+        force_fsdp (bool): Whether to force using FSDP for distributed training.
+        model_max_length (int): Maximum sequence length for model inputs.
+        double_quant (bool): Whether to use double quantization.
+        quant_type (str): Quantization type, either "fp4" or "nf4".
+        bits (int): Number of bits for quantization.
+        lora_enable (bool): Whether to enable LoRA training.
+        lora_r (int): LoRA rank.
+        lora_alpha (int): LoRA alpha parameter.
+        lora_dropout (float): Dropout probability for LoRA layers.
+        lora_weight_path (str): Path to pretrained LoRA weights.
+        lora_bias (str): Type of bias to use in LoRA.
+        disable_tqdm (bool): Whether to disable tqdm progress bars.
+    """
     cache_dir: Optional[str] = field(default=None)
     optim: str = field(default="adamw_torch")
     remove_unused_columns: bool = field(default=False)
@@ -635,7 +692,7 @@ def _tokenize_fn(strings: Sequence[str],
 
 
 def _mask_targets(target, tokenized_lens, speakers):
-    # cur_idx = 0
+
     cur_idx = tokenized_lens[0]
     tokenized_lens = tokenized_lens[1:]
     target[:cur_idx] = IGNORE_INDEX
@@ -671,6 +728,16 @@ def preprocess_graph(
     graph_cfg: dict,
     cur_token_len: int,
 ) -> Dict:
+    """Preprocess graph data in the input sources.
+    
+    Args:
+        sources (Sequence[str]): Input source sequences.
+        graph_cfg (dict): Graph configuration dictionary.
+        cur_token_len (int): Current token length.
+        
+    Returns:
+        Dict: Preprocessed sources with graph tokens inserted.
+    """
     is_graph = graph_cfg['is_graph']
 
     graph_token_len = cur_token_len
@@ -696,6 +763,17 @@ def preprocess_graph_LP(
     cur_token_len_1: int,
     cur_token_len_2: int,
 ) -> Dict:
+    """Preprocess graph data for link prediction tasks.
+    
+    Args:
+        sources (Sequence[str]): Input source sequences.
+        graph_cfg (dict): Graph configuration dictionary.
+        cur_token_len_1 (int): Token length for first graph.
+        cur_token_len_2 (int): Token length for second graph.
+        
+    Returns:
+        Dict: Preprocessed sources with graph tokens inserted.
+    """
     is_graph = graph_cfg['is_graph']
 
     graph_token_len_1 = cur_token_len_1
@@ -720,13 +798,10 @@ def preprocess_graph_LP(
                 first_index = sentence["value"].find(DEFAULT_GRAPH_TOKEN)
                 sentence["value"] = sentence["value"][:first_index] + replace_token_1 + sentence["value"][first_index+len(DEFAULT_GRAPH_TOKEN):]
 
-                # 替换第二个<graph>为B
+
                 second_index = sentence["value"].find(DEFAULT_GRAPH_TOKEN)
                 sentence["value"] = sentence["value"][:second_index] + replace_token_2 + sentence["value"][second_index+len(DEFAULT_GRAPH_TOKEN):]
 
-
-
-    # print(sources)
 
     return sources
 def preprocess_graph_Hetero(
@@ -734,6 +809,16 @@ def preprocess_graph_Hetero(
     graph_cfg: dict,
     cur_token_lens: List[int],
 ) -> Dict:
+    """Preprocess heterogeneous graph data.
+    
+    Args:
+        sources (Sequence[str]): Input source sequences.
+        graph_cfg (dict): Graph configuration dictionary.
+        cur_token_lens (List[int]): List of token lengths for each node type.
+        
+    Returns:
+        Dict: Preprocessed sources with heterogeneous graph tokens inserted.
+    """
     is_graph = graph_cfg['is_graph']
 
     graph_token_lens = cur_token_lens
@@ -749,7 +834,7 @@ def preprocess_graph_Hetero(
                     sentence['value'] = DEFAULT_GRAPH_TOKEN + default_conversation.sep + default_conversation.roles[0] + ": " + sentence['value']
         for sentence in source:
             if DEFAULT_GRAPH_TOKEN in sentence["value"]:
-                # build replace_tokens
+
                 replace_tokens = []
                 for i, token_len in enumerate(graph_token_lens):
                     replace_token = DEFAULT_GRAPH_PATCH_TOKEN * token_len
@@ -767,6 +852,15 @@ def preprocess_v1(
     sources,
     tokenizer: transformers.PreTrainedTokenizer,
 ) -> Dict:
+    """Preprocess conversation data using v1 format.
+    
+    Args:
+        sources: Source conversation data.
+        tokenizer: Tokenizer for processing text.
+        
+    Returns:
+        Dict: Dictionary containing processed input_ids and labels.
+    """
     conv = default_conversation.copy()
     roles = {"human": default_conversation.roles[0], "gpt": default_conversation.roles[1]}
 
@@ -865,9 +959,9 @@ def preprocess_mpt(
         total_len = int(target.ne(tokenizer.pad_token_id).sum())
 
         rounds = conversation.split(conv.sep)
-        re_rounds = [conv.sep.join(rounds[:3])] # system + user + gpt
+        re_rounds = [conv.sep.join(rounds[:3])]
         for conv_idx in range(3, len(rounds), 2):
-            re_rounds.append(conv.sep.join(rounds[conv_idx:conv_idx+2]))    # user + gpt
+            re_rounds.append(conv.sep.join(rounds[conv_idx:conv_idx+2])) 
         cur_len = 0
         target[:cur_len] = IGNORE_INDEX
         for i, rou in enumerate(re_rounds):
@@ -920,7 +1014,7 @@ def preprocess(
         header = f"{default_conversation.system}\n\n"
         conversation = _add_speaker_and_signal(header, source)
         conversations.append(conversation)
-    # tokenize conversations
+
     conversations_tokenized = _tokenize_fn(conversations, tokenizer)
     input_ids = conversations_tokenized["input_ids"]
     targets = copy.deepcopy(input_ids)
@@ -934,10 +1028,21 @@ def preprocess(
 
 
 class SupervisedDataset(Dataset):
-    """Dataset for supervised fine-tuning."""
+    """Dataset for supervised fine-tuning of the model.
+    
+    Args:
+        data_path (str): Path to the data file.
+        tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
+    """
 
     def __init__(self, data_path: str,
                  tokenizer: transformers.PreTrainedTokenizer):
+        """Initialize the dataset.
+        
+        Args:
+            data_path (str): Path to the data file.
+            tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
+        """
         super(SupervisedDataset, self).__init__()
         logging.warning("Loading data...")
         list_data_dict = json.load(open(data_path, "r"))
@@ -989,7 +1094,19 @@ class DataCollatorForSupervisedDataset(object):
         return batch
 
 class LazySupervisedDatasetHetero(Dataset):
-    """Dataset for supervised fine-tuning."""
+    """Dataset for supervised fine-tuning with heterogeneous graphs using lazy loading.
+    
+    This dataset handles heterogeneous graph data and supports lazy loading to 
+    reduce memory usage.
+    
+    Args:
+        data_path (str): Path to the data file.
+        tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
+        graph_cfg (dict): Graph configuration dictionary.
+        graph_root (str): Root directory for graph data.
+        hetero_key_path (str): Path to heterogeneous graph keys.
+        **kwargs: Additional arguments.
+    """
 
     def __init__(self, data_path: str,
                  tokenizer: transformers.PreTrainedTokenizer,
@@ -1008,16 +1125,16 @@ class LazySupervisedDatasetHetero(Dataset):
             few_shot_mask = np.load(osp.join(graph_root, f'processed/seed_42_{num_shot}_shot_train_mask.npy'))
             few_shot_ids = few_shot_mask.nonzero()[0]
             few_shot_ids_dict['oag'] = few_shot_ids
-            data_dir = 'ann_processed_MetaHGT_imdb_dblp_epoch5'  # OAG数据集的注释文件目录
+            data_dir = 'ann_processed_MetaHGT_imdb_dblp_epoch5'  
         else:
-            data_dir = 'ann_processed_MetaHGT_imdb_dblp_epoch5'  # OAG数据集的注释文件目录
+            data_dir = 'ann_processed_MetaHGT_imdb_dblp_epoch5'  
         
         for i, path in enumerate(data_path):
             ann_file = glob.glob(osp.join(graph_root, path, data_dir, '*.json'), recursive=True)
 
             ann_data_path.extend(ann_file)
 
-        # list_data_dict = json.load(open(data_path, "r"))
+
         list_data_dict = []
         for i, ann_file in enumerate(ann_data_path):
             ann_data = json.load(open(ann_file, "r", encoding= "utf-8"))
@@ -1042,7 +1159,7 @@ class LazySupervisedDatasetHetero(Dataset):
 
         self.graph_root = graph_root
 
-        # 只加载OAG的节点和边特征
+
         self.node_feas_dict = torch.load('./higpt/model/meta_hgt/meta_dict/oag/node_type.pt')
         for k in self.node_feas_dict.keys():
             self.node_feas_dict[k] = torch.Tensor(self.node_feas_dict[k])
@@ -1095,7 +1212,15 @@ class LazySupervisedDatasetHetero(Dataset):
 
 def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
                                 data_args) -> Dict:
-    """Make dataset and collator for supervised fine-tuning."""
+    """Create dataset and collator for supervised fine-tuning.
+    
+    Args:
+        tokenizer (PreTrainedTokenizer): Tokenizer for processing text.
+        data_args: Data configuration arguments.
+        
+    Returns:
+        Dict: Dictionary containing train_dataset, eval_dataset, and data_collator.
+    """
     dataset_cls = (LazySupervisedDatasetHetero
                    if data_args.lazy_preprocess else SupervisedDataset)
     train_dataset = dataset_cls(tokenizer=tokenizer,
@@ -1116,6 +1241,11 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer,
                 data_collator=data_collator)
 
 def train():
+    """Main training function.
+    
+    Sets up model, tokenizer, datasets and runs the training loop.
+    Handles model configuration, data preprocessing, and training process.
+    """
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
@@ -1126,7 +1256,7 @@ def train():
 
     bnb_model_from_pretrained_args = {}
 
-    ## load 4 8 bit 
+
     if training_args.bits in [4, 8]:
         from transformers import BitsAndBytesConfig
         from peft import prepare_model_for_int8_training

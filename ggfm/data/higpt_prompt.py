@@ -17,16 +17,28 @@ from graph import RenameUnpickler , renamed_load
 
 
 def dgl_to_pyg(dgl_graph):
-    """Convert DGL graph to PyG format"""
+    """
+    Convert DGL graph to PyG format.
+    
+    Converts a DGL heterogeneous graph to PyTorch Geometric format while preserving
+    node features and edge indices.
+    
+    Args:
+        dgl_graph: DGL heterogeneous graph
+        
+    Returns:
+        HeteroData: Converted PyG heterogeneous graph with:
+            - Node features (x) initialized as zero tensors
+            - Edge indices preserved for each edge type
+            - Node mapping from DGL to PyG format
+    """
     pyg_data = HeteroData()
     
-    # Convert node features
     for ntype in dgl_graph.ntypes:
         num_nodes = dgl_graph.num_nodes(ntype)
         pyg_data[ntype].x = torch.zeros((num_nodes, 768))
         pyg_data[ntype].dgl_to_pyg = torch.arange(num_nodes)
     
-    # Convert edges
     for etype in dgl_graph.canonical_etypes:
         src_type, rel_type, dst_type = etype
         src, dst = dgl_graph.edges(etype=etype)
@@ -40,12 +52,10 @@ def sample_subgraph(g, seed_nid, num_hops=2, fanout=10):
     nodes = {ntype: [] for ntype in g.ntypes}
     nodes['paper'].append(seed_nid)
     
-    # Multi-hop sampling
     for hop in range(num_hops):
         current_nodes = {ntype: torch.tensor(nodes[ntype], dtype=torch.int64) 
                         for ntype in nodes if len(nodes[ntype]) > 0}
         
-        # Sample for each edge type
         for etype in g.canonical_etypes:
             src_type, rel_type, dst_type = etype
             if dst_type in current_nodes:
@@ -61,17 +71,13 @@ def sample_subgraph(g, seed_nid, num_hops=2, fanout=10):
                     nodes[src_type] = []
                 nodes[src_type].extend(src_nodes.tolist())
     
-    # Remove duplicates
     for ntype in nodes:
         nodes[ntype] = list(set(nodes[ntype]))
     
-    # Extract subgraph
     subg = dgl.node_subgraph(g, nodes)
     
-    # Convert to PyG format
     pyg_graph = dgl_to_pyg(subg)
     
-    # Ensure all node types have features
     for ntype in pyg_graph.node_types:
         if not hasattr(pyg_graph[ntype], 'x'):
             num_nodes = pyg_graph[ntype].num_nodes
@@ -80,10 +86,26 @@ def sample_subgraph(g, seed_nid, num_hops=2, fanout=10):
     return pyg_graph
 
 def main():
-    """Main function to execute all processing steps"""
+    """
+    Main function to execute all dataset processing steps.
+    
+    Performs three main steps:
+    1. Assigns paper labels based on L2 level field connections
+    2. Generates node and edge type embeddings using BERT
+    3. Prepares training data by:
+        - Sampling subgraphs
+        - Creating conversations
+        - Saving in required format
+    
+    The processed data is saved in the following structure:
+    - Labeled graph: ggfm/datasets/labeled_field_hg.bin
+    - Label mapping: ggfm/datasets/label_to_field.json
+    - Type embeddings: ggfm/models/meta_hgt/meta_dict/oag/
+    - Training data: ggfm/datasets/stage2_data/OAG-all/
+    """
     print("Starting dataset processing...")
     
-    # Step 1: Assign paper labels
+
     print("\n=== Step 1: Assigning paper labels ===")
     print("Loading original dataset...")
     original_graph_path = "ggfm/datasets/new_graph_CS.pk"
@@ -94,16 +116,14 @@ def main():
     processed_graph_path = "ggfm/datasets/reduced_hg.bin"
     processed_glist, _ = load_graphs(processed_graph_path)
     processed_g = processed_glist[0]
-    
-    # Get L2 level paper-field connections
+
     field_features = original_g.node_feature['field']
     paper_field_edges = original_g.edge_list['paper']['field']
     l2_edges = paper_field_edges.get('rev_PF_in_L2', {})
     
-    # Filter L2 level fields
+
     l2_fields = field_features[field_features['attr'] == 'L2']
-    
-    # Assign labels to papers
+
     num_papers = processed_g.num_nodes('paper')
     paper_labels = torch.full((num_papers,), -1, dtype=torch.long)
     unlabeled_papers = []
@@ -119,16 +139,14 @@ def main():
                 unlabeled_papers.append(paper_id)
         else:
             unlabeled_papers.append(paper_id)
-    
-    # Add labels to graph
+
     processed_g.nodes['paper'].data['label'] = paper_labels
-    
-    # Save labeled graph
+
     labeled_graph_path = "ggfm/datasets/labeled_field_hg.bin"
     save_graphs(labeled_graph_path, [processed_g])
     print(f"Saved labeled graph to: {labeled_graph_path}")
     
-    # Create and save label to field mapping
+
     label_to_field = {}
     unique_labels = sorted(l2_fields['label'].unique())
     for label in unique_labels:
@@ -142,22 +160,19 @@ def main():
                 'attr': field_info['attr']
             })
         label_to_field[str(label)] = field_infos
-    
-    # Add special label
+
     label_to_field['-1'] = [{
         'field_id': -1,
         'name': 'Unlabeled',
         'type': 'special',
         'attr': 'none'
     }]
-    
-    # Save mapping
+
     mapping_path = "ggfm/datasets/label_to_field.json"
     with open(mapping_path, 'w', encoding='utf-8') as f:
         json.dump(label_to_field, f, indent=2, ensure_ascii=False)
     print(f"Saved label mapping to: {mapping_path}")
-    
-    # Step 2: Generate type embeddings
+
     print("\n=== Step 2: Generating node and edge type embeddings ===")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
@@ -165,62 +180,52 @@ def main():
     model = SentenceTransformer('bert-base-nli-mean-tokens')
     model = model.to(device)
     
-    # Load graph data
+
     print("Loading graph data...")
     graph_list, _ = load_graphs(labeled_graph_path)
     g = graph_list[0]
-    
-    # Generate and save embeddings
+
     save_dir = Path("ggfm/models/meta_hgt/meta_dict/oag/")
     save_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Generate and save node type embeddings
+
     node_type_embeddings = generate_node_type_embeddings(g.ntypes, model, device)
     torch.save(node_type_embeddings, save_dir / "node_type.pt")
-    
-    # Generate and save edge type embeddings
+
     edge_type_embeddings = generate_edge_type_embeddings(g.canonical_etypes, model, device)
     torch.save(edge_type_embeddings, save_dir / "edge_type.pt")
-    
-    # Step 3: Prepare training data
+
     print("\n=== Step 3: Preparing training data ===")
-    
-    # Create output directories
+
     base_dir0 = Path("ggfm/datasets/stage2_data/OAG-all")
     base_dir = base_dir0 / "instruct_ds_oag"
     for split in ['train', 'test', 'val']:
         (base_dir / 'ann').mkdir(parents=True, exist_ok=True)
         (base_dir / 'graph_data' / split).mkdir(parents=True, exist_ok=True)
-    
-    # Load node name mapping
+
     try:
         with open("ggfm/datasets/graph_node_name.pkl", 'rb') as f:
             node_names = pickle.load(f)
     except:
         node_names = {}
-    
-    # Load split indices
+
     splits = {}
     for split_name in ['train', 'test', 'val']:
         split_file = f"oag_{split_name}_pairs.pkl"  
         with open(f"ggfm/datasets/{split_file}", 'rb') as f:
             splits[split_name] = pickle.load(f)
-    
-    # Process each split
+
     for split_name, paper_ids in splits.items():
         print(f"\nProcessing {split_name} split...")
         json_data = []
         
         for idx, paper_id in enumerate(tqdm(paper_ids)):
-            # Sample subgraph
+
             pyg_graph = sample_subgraph(g, paper_id)
-            
-            # Save PyG format graph
+
             graph_file = f"OAG_{split_name}_{paper_id}.pt"
             graph_path = base_dir / 'graph_data' / split_name / graph_file
             torch.save(pyg_graph, graph_path)
-            
-            # Create JSON entry
+
             label = g.nodes['paper'].data['label'][paper_id].item()
             
             entry = {
@@ -236,8 +241,7 @@ def main():
                 "conversations": create_conversation(pyg_graph, paper_id, node_names, label)
             }
             json_data.append(entry)
-        
-        # Save JSON file
+
         json_file = base_dir / 'ann' / f'OAG_{split_name}_std_0_{len(paper_ids)}.json'
         with open(json_file, 'w', encoding='utf-8') as f:
             json.dump(json_data, f, indent=2, ensure_ascii=False)
@@ -301,7 +305,19 @@ def generate_node_descriptions(node_type):
     return descriptions.get(node_type, [])
 
 def generate_edge_descriptions(edge_type):
-    """Generate descriptions for edge types"""
+    """
+    Generate natural language descriptions for edge types.
+    
+    Provides multiple paraphrased descriptions for each edge type in the
+    heterogeneous academic graph.
+    
+    Args:
+        edge_type (tuple): Edge type as (source_type, relation, target_type)
+        
+    Returns:
+        list: List of string descriptions for the edge type. Returns empty list
+            if edge type is not recognized.
+    """
     descriptions = {
         ('paper', 'cites', 'paper'): [
             "This paper cites that paper",
@@ -369,21 +385,38 @@ def get_embedding(descriptions, model, device):
     return embeddings.mean(dim=0).cpu()
 
 def create_conversation(g, paper_id, node_names, label):
-    """Create conversation content for the paper"""
-    # Get paper information
-    paper_title = node_names['paper'][paper_id] if 'paper' in node_names else f"Paper_{paper_id}"
+    """
+    Create conversation content for a paper node.
     
-    # Get paper authors
+    Generates a structured conversation with:
+    1. A prompt describing the graph structure
+    2. Paper-specific information (title, authors)
+    3. A question about paper category
+    4. The ground truth label
+    
+    Args:
+        g (HeteroData): PyG heterogeneous graph
+        paper_id (int): ID of target paper node
+        node_names (dict): Mapping of node IDs to actual names
+        label (int): Ground truth label for paper category
+        
+    Returns:
+        list: List of conversation turns as dictionaries with:
+            - "from": Speaker identifier ("human" or "gpt")
+            - "value": Content of the turn
+    """
+
+    paper_title = node_names['paper'][paper_id] if 'paper' in node_names else f"Paper_{paper_id}"
+
     authors = []
     if ('paper', 'is writen by', 'author') in g.edge_types:
         edge_index = g['paper', 'is writen by', 'author'].edge_index
-        paper_idx = 0  # Target paper is always the first node in subgraph
+        paper_idx = 0  
         author_mask = edge_index[0] == paper_idx
         author_ids = edge_index[1][author_mask].tolist()
         authors.extend([node_names['author'][aid] if 'author' in node_names else f"Author_{aid}" 
                       for aid in author_ids])
-    
-    # Build prompt
+
     prompt = (
         "Given a heterogeneous academic network graph about computer science, there are four types of nodes, "
         "namely: paper, author, affiliation, venue. The relationships (meta paths) between different nodes include: "
