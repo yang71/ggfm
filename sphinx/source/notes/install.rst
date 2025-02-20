@@ -44,7 +44,7 @@ your OS and CUDA version. For example:
 
     pip install torch_geometric
 
-**4. Install openhgnn:**
+**4. Install GGFM:**
 
 * install from pypi
 

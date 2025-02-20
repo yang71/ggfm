@@ -1,8 +1,8 @@
-﻿ggfm.models.Matcher
-===================
+﻿ggfm.models.LLAGA
+=================
 
 .. currentmodule:: ggfm.models
 
-.. autoclass:: Matcher
+.. autoclass:: LLAGA
     :members:
     :undoc-members:
