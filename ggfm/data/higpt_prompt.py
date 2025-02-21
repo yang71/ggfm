@@ -11,9 +11,7 @@ from tqdm import tqdm
 import pickle
 from torch_geometric.data import HeteroData
 from sentence_transformers import SentenceTransformer
-from collections import defaultdict
-import os
-from graph import RenameUnpickler , renamed_load
+from graph import renamed_load
 
 
 def dgl_to_pyg(dgl_graph):
@@ -85,7 +83,7 @@ def sample_subgraph(g, seed_nid, num_hops=2, fanout=10):
 
     return pyg_graph
 
-def main():
+def higpt_prompt_generation():
     """
     Main function to execute all dataset processing steps.
     
@@ -439,4 +437,4 @@ def create_conversation(g, paper_id, node_names, label):
     ]
 
 if __name__ == "__main__":
-    main() 
+    higpt_prompt_generation() 
