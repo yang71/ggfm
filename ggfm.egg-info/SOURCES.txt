@@ -1,6 +1,6 @@
+README.md
 setup.py
 examples/__init__.py
-examples/gpt_gnn/__init__.py
 examples/gpt_gnn/lp_ft.py
 examples/gpt_gnn/nc_ft.py
 examples/gpt_gnn/pretrain.py
@@ -21,4 +21,5 @@ ggfm/data/random_walk.py
 ggfm/data/utils.py
 ggfm/models/__init__.py
 ggfm/models/gpt_gnn.py
+ggfm/models/llaga.py
 ggfm/models/utils.py

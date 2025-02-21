@@ -5,7 +5,9 @@ from graphgpt import gcn_conv, MPNN, PositionalEncoding, pos_encoding, graph_tra
 from .gpt_gnn import GPT_GNN, Classifier, Matcher, HGT, RNNModel
 from .pt_hgnn import PT_HGNN, Classifier, Matcher, StructureMapping, GNN, RNNModel
 from .sgformer import SGFormer
-from .utils import get_optimizer
+from .utils import get_optimizer, LinkPredictor
+from .llaga import LLAGA
+
 
 __all__ = [
     'GPT_GNN',
@@ -41,8 +43,8 @@ __all__ = [
     'PT_HGNN',
     'StructureMapping',
     'SGFormer',
-
-
+    'LLAGA',
+    'LinkPredictor'
 ]
 
 classes = __all__
