@@ -1,7 +1,7 @@
 from .gpt_gnn import GPT_GNN, Classifier, Matcher, HGT, RNNModel
 from .higpt import HeteroLlamaForCausalLM
-from .utils import get_optimizer
-
+from .utils import get_optimizer, LinkPredictor
+from .llaga import LLAGA
 
 __all__ = [
     'GPT_GNN',
@@ -10,7 +10,9 @@ __all__ = [
     'HGT',
     'RNNModel',
     'get_optimizer',
-    'HeteroLlamaForCausalLM'
+    'HeteroLlamaForCausalLM',
+    'LLAGA',
+    'LinkPredictor',
 ]
 
 classes = __all__

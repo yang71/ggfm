@@ -10,6 +10,8 @@ ggfm.models
 
     ggfm.models.HGT
     ggfm.models.GPT_GNN
+    ggfm.models.LLAGA
     ggfm.models.Matcher
     ggfm.models.RNNModel
     ggfm.models.Classifier
+    ggfm.models.LinkPredictor
