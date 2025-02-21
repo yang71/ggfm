@@ -1,0 +1,400 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ggfm.models.gpt_gnn &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/install.html">Install</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/quick_start.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/developer_guide.html">Developer Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.models.html">ggfm.models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.evaluate.html">ggfm.evaluation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ggfm.models.gpt_gnn</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ggfm.models.gpt_gnn</h1><div class="highlight"><pre>
+<span></span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
+<span class="kn">from</span> <span class="nn">ggfm.conv.hgt_conv</span> <span class="kn">import</span> <span class="n">HGTConv</span>
+<span class="kn">from</span> <span class="nn">gensim.parsing.preprocessing</span> <span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="GPT_GNN"><a class="viewcode-back" href="../../../generated/ggfm.models.GPT_GNN.html#ggfm.models.GPT_GNN">[docs]</a><span class="k">class</span> <span class="nc">GPT_GNN</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;`&quot;GPT-GNN: Generative Pre-Training of Graph Neural Networks&quot;</span>
+<span class="sd">    &lt;https://arxiv.org/abs/2006.15437&gt;`_ paper.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    gnn: class:`ggfm.models`</span>
+<span class="sd">        The used GNN model.</span>
+<span class="sd">    rem_edge_list: dict</span>
+<span class="sd">        The remaining edge list after sampling.</span>
+<span class="sd">    attr_decoder: `ggfm.models`</span>
+<span class="sd">        Attribute decoder.</span>
+<span class="sd">    neg_samp_num: int</span>
+<span class="sd">        Maximum number of negative sample for each target node.</span>
+<span class="sd">        (default: :obj:`1`)</span>
+<span class="sd">    device: int</span>
+<span class="sd">        Device</span>
+<span class="sd">    neg_queue_size: int, optional</span>
+<span class="sd">        Max size of negetive adaptive embedding queue.</span>
+<span class="sd">        (default: :obj:`0`)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gnn</span><span class="p">,</span> <span class="n">rem_edge_list</span><span class="p">,</span> <span class="n">attr_decoder</span><span class="p">,</span> <span class="n">neg_samp_num</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">neg_queue_size</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">GPT_GNN</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">gnn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gnn</span> <span class="o">=</span> <span class="n">gnn</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue_size</span> <span class="o">=</span> <span class="n">neg_queue_size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">source_type</span><span class="p">,</span> <span class="n">relation_type</span><span class="p">)</span>
+                <span class="n">matcher</span> <span class="o">=</span> <span class="n">Matcher</span><span class="p">(</span><span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">([])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">matcher</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">matcher</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">attr_decoder</span> <span class="o">=</span> <span class="n">attr_decoder</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">init_emb</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">gnn</span><span class="o">.</span><span class="n">in_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ce</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">CrossEntropyLoss</span><span class="p">(</span><span class="n">reduction</span> <span class="o">=</span> <span class="s1">&#39;none&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_samp_num</span> <span class="o">=</span> <span class="n">neg_samp_num</span> 
+        
+<div class="viewcode-block" id="GPT_GNN.neg_sample"><a class="viewcode-back" href="../../../generated/ggfm.models.GPT_GNN.html#ggfm.models.GPT_GNN.neg_sample">[docs]</a>    <span class="k">def</span> <span class="nf">neg_sample</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">souce_node_list</span><span class="p">,</span> <span class="n">pos_node_list</span><span class="p">):</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">souce_node_list</span><span class="p">)</span>
+        <span class="n">neg_nodes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span> <span class="p">:</span> <span class="kc">True</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">pos_node_list</span><span class="p">}</span> 
+        <span class="n">tot</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">souce_node_list</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">node_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+                <span class="n">neg_nodes</span> <span class="o">+=</span> <span class="p">[</span><span class="n">node_id</span><span class="p">]</span>
+                <span class="n">tot</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">tot</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_samp_num</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="n">neg_nodes</span></div>
+        
+<div class="viewcode-block" id="GPT_GNN.forward"><a class="viewcode-back" href="../../../generated/ggfm.models.GPT_GNN.html#ggfm.models.GPT_GNN.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_feature</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">gnn</span><span class="p">(</span><span class="n">node_feature</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">)</span></div>
+<div class="viewcode-block" id="GPT_GNN.link_loss"><a class="viewcode-back" href="../../../generated/ggfm.models.GPT_GNN.html#ggfm.models.GPT_GNN.link_loss">[docs]</a>    <span class="k">def</span> <span class="nf">link_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_emb</span><span class="p">,</span> <span class="n">rem_edge_list</span><span class="p">,</span> <span class="n">ori_edge_list</span><span class="p">,</span> <span class="n">node_dict</span><span class="p">,</span> <span class="n">target_type</span><span class="p">,</span> <span class="n">use_queue</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">update_queue</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+        <span class="n">losses</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">ress</span>   <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">source_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">relation_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                    <span class="k">continue</span>
+                <span class="n">rem_edges</span> <span class="o">=</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rem_edges</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">8</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">ori_edges</span> <span class="o">=</span> <span class="n">ori_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                <span class="n">matcher</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+
+                <span class="n">target_ids</span><span class="p">,</span> <span class="n">positive_source_ids</span> <span class="o">=</span> <span class="n">rem_edges</span><span class="p">[:,</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">rem_edges</span><span class="p">[:,</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="n">n_nodes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_ids</span><span class="p">)</span>
+                <span class="n">source_node_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">ori_edges</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])</span>
+                
+                
+                <span class="n">negative_source_ids</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_sample</span><span class="p">(</span><span class="n">source_node_ids</span><span class="p">,</span> <span class="n">ori_edges</span><span class="p">[</span><span class="n">ori_edges</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">t_id</span><span class="p">][:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span> <span class="k">for</span> <span class="n">t_id</span> <span class="ow">in</span> <span class="n">target_ids</span><span class="p">]</span>
+                <span class="n">sn</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">neg_ids</span><span class="p">)</span> <span class="k">for</span> <span class="n">neg_ids</span> <span class="ow">in</span> <span class="n">negative_source_ids</span><span class="p">])</span>  <span class="c1"># 统计所有样本点的负样本list的最短长度</span>
+
+                <span class="n">negative_source_ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">neg_ids</span><span class="p">[:</span><span class="n">sn</span><span class="p">]</span> <span class="k">for</span> <span class="n">neg_ids</span> <span class="ow">in</span> <span class="n">negative_source_ids</span><span class="p">]</span>  <span class="c1"># 统一选择最短长度</span>
+
+                
+                <span class="n">source_ids</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">positive_source_ids</span><span class="p">,</span> <span class="n">negative_source_ids</span><span class="p">),</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">emb</span> <span class="o">=</span> <span class="n">node_emb</span><span class="p">[</span><span class="n">source_ids</span><span class="p">]</span>
+                
+                
+                <span class="k">if</span> <span class="n">use_queue</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">])</span> <span class="o">//</span> <span class="n">n_nodes</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">tmp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                    <span class="n">stx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span> <span class="o">//</span> <span class="n">n_nodes</span>
+                    <span class="n">tmp</span> <span class="o">=</span> <span class="n">tmp</span><span class="p">[:</span> <span class="n">stx</span> <span class="o">*</span> <span class="n">n_nodes</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_nodes</span><span class="p">,</span> <span class="n">stx</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">rep_size</span> <span class="o">=</span> <span class="n">sn</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">stx</span>
+                    <span class="n">source_emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">emb</span><span class="p">,</span> <span class="n">tmp</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">source_emb</span> <span class="o">=</span> <span class="n">source_emb</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_nodes</span> <span class="o">*</span> <span class="n">rep_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">rep_size</span> <span class="o">=</span> <span class="n">sn</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="n">source_emb</span> <span class="o">=</span> <span class="n">emb</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">source_ids</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">rep_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                    
+                <span class="n">target_ids</span> <span class="o">=</span> <span class="n">target_ids</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">rep_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">target_emb</span> <span class="o">=</span> <span class="n">node_emb</span><span class="p">[</span><span class="n">target_ids</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)]</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="n">matcher</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">target_emb</span><span class="p">,</span> <span class="n">source_emb</span><span class="p">)</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_nodes</span><span class="p">,</span> <span class="n">rep_size</span><span class="p">)</span>
+                <span class="n">ress</span> <span class="o">+=</span> <span class="p">[</span><span class="n">res</span><span class="o">.</span><span class="n">detach</span><span class="p">()]</span>
+                <span class="n">losses</span> <span class="o">+=</span> <span class="n">F</span><span class="o">.</span><span class="n">log_softmax</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)[:,</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">update_queue</span> <span class="ow">and</span> <span class="s1">&#39;L1&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">relation_type</span> <span class="ow">and</span> <span class="s1">&#39;L2&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">relation_type</span><span class="p">:</span>
+                    <span class="n">tmp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">=</span> \
+                        <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">node_emb</span><span class="p">[</span><span class="n">source_node_ids</span><span class="p">]</span><span class="o">.</span><span class="n">detach</span><span class="p">(),</span> <span class="n">tmp</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)[:</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_queue_size</span> <span class="o">*</span> <span class="n">n_nodes</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">losses</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">ress</span><span class="p">),</span> <span class="n">ress</span></div>
+
+    
+<div class="viewcode-block" id="GPT_GNN.text_loss"><a class="viewcode-back" href="../../../generated/ggfm.models.GPT_GNN.html#ggfm.models.GPT_GNN.text_loss">[docs]</a>    <span class="k">def</span> <span class="nf">text_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reps</span><span class="p">,</span> <span class="n">texts</span><span class="p">,</span> <span class="n">w2v_model</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">parse_text</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">w2v_model</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+            <span class="n">idxs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">pad</span>  <span class="o">=</span> <span class="n">w2v_model</span><span class="o">.</span><span class="n">wv</span><span class="o">.</span><span class="n">key_to_index</span><span class="p">[</span><span class="s1">&#39;eos&#39;</span><span class="p">]</span>
+            <span class="c1"># text to tokens</span>
+            <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;bos&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">preprocess_string</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="s1">&#39;eos&#39;</span><span class="p">]:</span>
+                    <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">w2v_model</span><span class="o">.</span><span class="n">wv</span><span class="o">.</span><span class="n">key_to_index</span><span class="p">:</span>
+                        <span class="n">idx</span> <span class="o">+=</span> <span class="p">[</span><span class="n">w2v_model</span><span class="o">.</span><span class="n">wv</span><span class="o">.</span><span class="n">key_to_index</span><span class="p">[</span><span class="n">word</span><span class="p">]]</span>
+                <span class="n">idxs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="n">mxl</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">idxs</span><span class="p">])</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="n">inp_idxs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">out_idxs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">masks</span>    <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idxs</span><span class="p">):</span>
+                <span class="n">inp_idxs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">idx</span> <span class="o">+</span> <span class="p">[</span><span class="n">pad</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mxl</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]]</span>
+                <span class="n">out_idxs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">+</span> <span class="p">[</span><span class="n">pad</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mxl</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">))]]</span> 
+                <span class="n">masks</span>    <span class="o">+=</span> <span class="p">[[</span><span class="mi">1</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">))]</span> <span class="o">+</span> <span class="p">[</span><span class="mi">0</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mxl</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]]</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">inp_idxs</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> \
+                   <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">out_idxs</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">torch</span><span class="o">.</span><span class="n">BoolTensor</span><span class="p">(</span><span class="n">masks</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">inp_idxs</span><span class="p">,</span> <span class="n">out_idxs</span><span class="p">,</span> <span class="n">masks</span> <span class="o">=</span> <span class="n">parse_text</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">w2v_model</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">pred_prob</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attr_decoder</span><span class="p">(</span><span class="n">inp_idxs</span><span class="p">,</span> <span class="n">reps</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">inp_idxs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>      
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ce</span><span class="p">(</span><span class="n">pred_prob</span><span class="p">[</span><span class="n">masks</span><span class="p">],</span> <span class="n">out_idxs</span><span class="p">[</span><span class="n">masks</span><span class="p">])</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="GPT_GNN.feat_loss"><a class="viewcode-back" href="../../../generated/ggfm.models.GPT_GNN.html#ggfm.models.GPT_GNN.feat_loss">[docs]</a>    <span class="k">def</span> <span class="nf">feat_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reps</span><span class="p">,</span> <span class="n">out</span><span class="p">):</span>
+        <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">attr_decoder</span><span class="p">(</span><span class="n">reps</span><span class="p">,</span> <span class="n">out</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span></div></div>
+
+
+<div class="viewcode-block" id="Classifier"><a class="viewcode-back" href="../../../generated/ggfm.models.Classifier.html#ggfm.models.Classifier">[docs]</a><span class="k">class</span> <span class="nc">Classifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Classifier for graph node classification task.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_hid: int</span>
+<span class="sd">        Input size.</span>
+<span class="sd">    n_out: int</span>
+<span class="sd">        Output size.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Classifier</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span>    <span class="o">=</span> <span class="n">n_hid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_out</span>    <span class="o">=</span> <span class="n">n_out</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linear</span>   <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">n_hid</span><span class="p">,</span>  <span class="n">n_out</span><span class="p">)</span>
+<div class="viewcode-block" id="Classifier.forward"><a class="viewcode-back" href="../../../generated/ggfm.models.Classifier.html#ggfm.models.Classifier.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">tx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">linear</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">log_softmax</span><span class="p">(</span><span class="n">tx</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(),</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span></div>
+    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">(n_hid=</span><span class="si">{}</span><span class="s1">, n_out=</span><span class="si">{}</span><span class="s1">)&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_out</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="Matcher"><a class="viewcode-back" href="../../../generated/ggfm.models.Matcher.html#ggfm.models.Matcher">[docs]</a><span class="k">class</span> <span class="nc">Matcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Matching between a pair of nodes to conduct link prediction.</span>
+<span class="sd">        Use multi-head attention as matching model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_hid: int</span>
+<span class="sd">        Input size.</span>
+<span class="sd">    n_out: int</span>
+<span class="sd">        Output size.</span>
+<span class="sd">    temperature: float, optional</span>
+<span class="sd">        Temperature.</span>
+<span class="sd">        (default: :obj:`0.1`)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Matcher</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span>       <span class="o">=</span> <span class="n">n_hid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linear</span>      <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">n_hid</span><span class="p">,</span>  <span class="n">n_out</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sqrt_hd</span>     <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n_out</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop</span>        <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cosine</span>      <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">CosineSimilarity</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache</span>       <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">temperature</span> <span class="o">=</span> <span class="n">temperature</span>
+<div class="viewcode-block" id="Matcher.forward"><a class="viewcode-back" href="../../../generated/ggfm.models.Matcher.html#ggfm.models.Matcher.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">ty</span><span class="p">,</span> <span class="n">use_norm</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
+        <span class="n">tx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">linear</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">use_norm</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cosine</span><span class="p">(</span><span class="n">tx</span><span class="p">,</span> <span class="n">ty</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">temperature</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">tx</span> <span class="o">*</span> <span class="n">ty</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">sqrt_hd</span></div>
+    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">(n_hid=</span><span class="si">{}</span><span class="s1">)&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="HGT"><a class="viewcode-back" href="../../../generated/ggfm.models.HGT.html#ggfm.models.HGT">[docs]</a><span class="k">class</span> <span class="nc">HGT</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;The Heterogeneous Graph Transformer (HGT) operator from the</span>
+<span class="sd">    `&quot;Heterogeneous Graph Transformer&quot; </span>
+<span class="sd">    &lt;https://arxiv.org/abs/2003.01332&gt;`_ paper.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_dim</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">num_types</span><span class="p">,</span> <span class="n">num_relations</span><span class="p">,</span> <span class="n">n_heads</span><span class="p">,</span> <span class="n">n_layers</span><span class="p">,</span> <span class="n">dropout</span> <span class="o">=</span> <span class="mf">0.2</span><span class="p">,</span> <span class="n">prev_norm</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">last_norm</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">HGT</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_types</span> <span class="o">=</span> <span class="n">num_types</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span>    <span class="o">=</span> <span class="n">in_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span>     <span class="o">=</span> <span class="n">n_hid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adapt_ws</span>  <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop</span>      <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_types</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">adapt_ws</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">in_dim</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_layers</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">HGTConv</span><span class="p">(</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">num_types</span><span class="p">,</span> <span class="n">num_relations</span><span class="p">,</span> <span class="n">n_heads</span><span class="p">,</span> <span class="n">dropout</span><span class="p">,</span> <span class="n">use_norm</span> <span class="o">=</span> <span class="n">prev_norm</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">HGTConv</span><span class="p">(</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">num_types</span><span class="p">,</span> <span class="n">num_relations</span><span class="p">,</span> <span class="n">n_heads</span><span class="p">,</span> <span class="n">dropout</span><span class="p">,</span> <span class="n">use_norm</span> <span class="o">=</span> <span class="n">last_norm</span><span class="p">))</span>
+
+<div class="viewcode-block" id="HGT.forward"><a class="viewcode-back" href="../../../generated/ggfm.models.HGT.html#ggfm.models.HGT.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_feature</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">node_feature</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">node_feature</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t_id</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_types</span><span class="p">):</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">node_type</span> <span class="o">==</span> <span class="nb">int</span><span class="p">(</span><span class="n">t_id</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">idx</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">res</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">adapt_ws</span><span class="p">[</span><span class="n">t_id</span><span class="p">](</span><span class="n">node_feature</span><span class="p">[</span><span class="n">idx</span><span class="p">]))</span>
+        <span class="n">meta_xs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+        <span class="k">del</span> <span class="n">res</span>
+        <span class="k">for</span> <span class="n">gc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span><span class="p">:</span>
+            <span class="n">meta_xs</span> <span class="o">=</span> <span class="n">gc</span><span class="p">(</span><span class="n">meta_xs</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">meta_xs</span>   </div></div>
+
+    
+<div class="viewcode-block" id="RNNModel"><a class="viewcode-back" href="../../../generated/ggfm.models.RNNModel.html#ggfm.models.RNNModel">[docs]</a><span class="k">class</span> <span class="nc">RNNModel</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Container module with an encoder, a recurrent module, and a decoder.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_word: int</span>
+<span class="sd">        Number of tokens.</span>
+<span class="sd">    ninp: int</span>
+<span class="sd">        Input size.</span>
+<span class="sd">    nhid: int</span>
+<span class="sd">        Hidden size.</span>
+<span class="sd">    nlayers: int</span>
+<span class="sd">        Layer number of LSTM.</span>
+<span class="sd">    dropout: float, optional</span>
+<span class="sd">        Dropout rate.</span>
+<span class="sd">        (default: :obj:`0.2`)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_word</span><span class="p">,</span> <span class="n">ninp</span><span class="p">,</span> <span class="n">nhid</span><span class="p">,</span> <span class="n">nlayers</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="mf">0.2</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">RNNModel</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rnn</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">LSTM</span><span class="p">(</span><span class="n">nhid</span><span class="p">,</span> <span class="n">nhid</span><span class="p">,</span> <span class="n">nlayers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Embedding</span><span class="p">(</span><span class="n">n_word</span><span class="p">,</span> <span class="n">nhid</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">nhid</span><span class="p">,</span> <span class="n">n_word</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adp</span>     <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">ninp</span> <span class="o">+</span> <span class="n">nhid</span><span class="p">,</span> <span class="n">nhid</span><span class="p">)</span>
+<div class="viewcode-block" id="RNNModel.forward"><a class="viewcode-back" href="../../../generated/ggfm.models.RNNModel.html#ggfm.models.RNNModel.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">,</span> <span class="n">hidden</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="n">emb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="p">(</span><span class="n">inp</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">hidden</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">((</span><span class="n">emb</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">emb</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">gelu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">adp</span><span class="p">(</span><span class="n">emb</span><span class="p">))</span>
+        <span class="n">output</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rnn</span><span class="p">(</span><span class="n">emb</span><span class="p">)</span>
+        <span class="n">decoded</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">output</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">decoded</span></div>
+<div class="viewcode-block" id="RNNModel.from_w2v"><a class="viewcode-back" href="../../../generated/ggfm.models.RNNModel.html#ggfm.models.RNNModel.from_w2v">[docs]</a>    <span class="k">def</span> <span class="nf">from_w2v</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w2v</span><span class="p">):</span>
+        <span class="n">initrange</span> <span class="o">=</span> <span class="mf">0.1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">w2v</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="o">.</span><span class="n">weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="o">.</span><span class="n">weight</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">False</span></div></div>
+        
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

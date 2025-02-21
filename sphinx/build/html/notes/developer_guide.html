@@ -1,0 +1,325 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Developer Guide &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../_static/doctools.js?v=888ff710"></script>
+      <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="ggfm.data" href="../api/ggfm.data.html" />
+    <link rel="prev" title="Quick Start" href="quick_start.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="install.html">Install</a></li>
+<li class="toctree-l1"><a class="reference internal" href="quick_start.html">Quick Start</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Developer Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#evaluate-a-new-dataset">Evaluate a new dataset</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#apply-a-new-example">Apply a new example</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.models.html">ggfm.models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.evaluate.html">ggfm.evaluation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Developer Guide</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/notes/developer_guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="developer-guide">
+<h1>Developer Guide<a class="headerlink" href="#developer-guide" title="Permalink to this heading">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+<section id="evaluate-a-new-dataset">
+<h2>Evaluate a new dataset<a class="headerlink" href="#evaluate-a-new-dataset" title="Permalink to this heading">¶</a></h2>
+<p><strong>Overview and Source of the DBLP Dataset</strong></p>
+<p>The <strong>DBLP dataset</strong> is a subset extracted from the DBLP computer science bibliography website. The data collection process follows the method outlined in the paper <strong>“MAGNN: Metapath Aggregated Graph Neural Network for Heterogeneous Graph Embedding”</strong>. This dataset includes multiple entities (such as authors, papers, conferences, and terms) along with various relationships between these entities (e.g., authors writing papers, papers published in conferences, etc.). The goal is to transform the DBLP dataset into a heterogeneous graph structure suitable for graph-based machine learning tasks like Graph Neural Networks (GNNs).</p>
+<p><strong>Applicability of Custom Datasets</strong></p>
+<p>Although this example uses the DBLP dataset, the preprocessing steps shown here are general and can be applied to other heterogeneous graph datasets. When working with other datasets, you can modify the steps to accommodate different node types and relationships. For example, you can add new node types (such as companies, countries, or products) and define relationships between them (e.g., customer purchasing products, user watching videos). You can also assign custom node features based on the specific requirements of your dataset.</p>
+<p><strong>Preprocessing Steps for Building a Heterogeneous Graph with DBLP Dataset</strong></p>
+<p>Next, we will outline how to preprocess the DBLP dataset and build a heterogeneous graph. The process involves the following steps:</p>
+<p><em>1. Load Node Data</em></p>
+<p>The first step is to load the different entity data from the DBLP dataset. These data are typically stored in CSV files. The main entities in the DBLP dataset are:</p>
+<ul class="simple">
+<li><p><strong>Authors</strong></p></li>
+<li><p><strong>Papers</strong></p></li>
+<li><p><strong>Conferences</strong></p></li>
+<li><p><strong>Terms</strong></p></li>
+</ul>
+<p>Each entity’s CSV file contains attributes such as ID, name, and labels. For example, the author’s file may contain columns like <cite>author_id</cite>, <cite>author_name</cite>, and <cite>author_label</cite>. We load and extract the data from these files using the <cite>load_data</cite> function.</p>
+<p><em>2. Add Nodes to the Graph</em></p>
+<p>After loading the node data, the next step is to add these entities as nodes to the heterogeneous graph. Each node should have the following attributes:</p>
+<ul class="simple">
+<li><p><strong>Type (type)</strong>: The type of the node (e.g., author, paper, conference, term).</p></li>
+<li><p><strong>ID (id)</strong>: A unique identifier for the node.</p></li>
+<li><p><strong>Name (name)</strong>: The name of the node (e.g., author’s name, paper title, etc.).</p></li>
+<li><p><strong>Label (label)</strong>: If available, a label or classification for the node.</p></li>
+</ul>
+<p>Using the <cite>add_node</cite> function, each entity is added to the graph, ensuring that the node’s type and attributes are correctly assigned.</p>
+<p><em>3. Load Edge Data</em></p>
+<p>Next, we need to load the edge data that represent the relationships between the nodes. In the DBLP dataset, common relationships include:</p>
+<ul class="simple">
+<li><p><strong>Author writes Paper</strong>: Connects author nodes to the papers they have written.</p></li>
+<li><p><strong>Paper published in Conference</strong>: Connects paper nodes to the conferences in which they were published.</p></li>
+<li><p><strong>Paper contains Term</strong>: Connects paper nodes to related term nodes.</p></li>
+</ul>
+<p>These relationships are stored in separate CSV files, which can be loaded using the <cite>load_data</cite> function. Each edge file contains pairs of nodes (e.g., author-paper, paper-conference) and defines the relationship between them.</p>
+<p><em>4. Add Edges to the Graph</em></p>
+<p>The <cite>add_edge</cite> function is used to add edges based on the relationships defined in the edge data. This function establishes connections between source and target nodes based on the relationship type (e.g., author-paper, paper-conference). The function supports both directed and undirected edges, and it can handle multiple types of relationships.</p>
+<p><em>5. Assign Node Features</em></p>
+<p>After adding the nodes and edges, the next step is to assign features to each node. Node features are additional information that can help improve performance in graph-based machine learning tasks. For instance:</p>
+<ul class="simple">
+<li><p><strong>Author nodes</strong>: May have features such as the number of publications, research topics, or collaboration networks.</p></li>
+<li><p><strong>Paper nodes</strong>: May include features like keywords, citation count, or publication year.</p></li>
+</ul>
+<p>The <cite>add_node_features</cite> function is used to assign features to each node type (e.g., authors, papers, conferences), storing them in a dictionary of node features. These features can be represented as vectors, scalars, or other data types depending on the task.</p>
+<p><strong>Definition and Role of the Graph Class</strong></p>
+<p>In the above steps, the <strong>Graph</strong> class plays a central role. This class is responsible for managing the entire process of building the heterogeneous graph, including adding nodes, adding edges, and assigning node features. Specifically, the <strong>Graph</strong> class defines how nodes and edges are created and maintained, and it provides the following methods:</p>
+<ul class="simple">
+<li><p><strong>add_node</strong>: Adds a node with its attributes.</p></li>
+<li><p><strong>add_edge</strong>: Adds an edge between nodes based on a specific relationship.</p></li>
+<li><p><strong>add_node_features</strong>: Assigns features to nodes.</p></li>
+</ul>
+<p>By using the <strong>Graph</strong> class, users can easily build and manipulate heterogeneous graphs without worrying about the underlying implementation details.</p>
+<p><strong>Graph Class Implementation</strong></p>
+<p>Below is the implementation of the <strong>Graph</strong> class, which supports the dynamic addition of nodes and edges, along with the handling of node features and relationships:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">dill</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+<span class="k">class</span> <span class="nc">Graph</span><span class="p">():</span>
+    <span class="c1"># Graph class represents a heterogeneous graph supporting dynamic addition of nodes and edges.</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Graph</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">node_forward</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="p">{})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">node_bacward</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="p">[])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">node_feature</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="p">[])</span>
+
+        <span class="c1"># Using defaultdict to initialize a nested dictionary structure for edge list</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">edge_list</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                    <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                        <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>
+                            <span class="k">lambda</span><span class="p">:</span> <span class="nb">int</span>  <span class="c1"># time, default type is int</span>
+                        <span class="p">)</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">times</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="nf">add_node</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="n">nfl</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">node_forward</span><span class="p">[</span><span class="n">node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]]</span>
+        <span class="k">if</span> <span class="n">node</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">nfl</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">node_bacward</span><span class="p">[</span><span class="n">node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+            <span class="n">ser</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">nfl</span><span class="p">)</span>
+            <span class="n">nfl</span><span class="p">[</span><span class="n">node</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]]</span> <span class="o">=</span> <span class="n">ser</span>
+            <span class="k">return</span> <span class="n">ser</span>
+        <span class="k">return</span> <span class="n">nfl</span><span class="p">[</span><span class="n">node</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]]</span>
+
+    <span class="k">def</span> <span class="nf">add_edge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source_node</span><span class="p">,</span> <span class="n">target_node</span><span class="p">,</span> <span class="n">time</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">relation_type</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">directed</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">edge</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">add_node</span><span class="p">(</span><span class="n">source_node</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_node</span><span class="p">(</span><span class="n">target_node</span><span class="p">)]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">target_node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]][</span><span class="n">source_node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]][</span><span class="n">relation_type</span><span class="p">][</span><span class="n">edge</span><span class="p">[</span><span class="mi">1</span><span class="p">]][</span><span class="n">edge</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">time</span>
+        <span class="k">if</span> <span class="n">directed</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">source_node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]][</span><span class="n">target_node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]][</span><span class="s1">&#39;rev_&#39;</span> <span class="o">+</span> <span class="n">relation_type</span><span class="p">][</span><span class="n">edge</span><span class="p">[</span><span class="mi">0</span><span class="p">]][</span><span class="n">edge</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">time</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">source_node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]][</span><span class="n">target_node</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">]][</span><span class="n">relation_type</span><span class="p">][</span><span class="n">edge</span><span class="p">[</span><span class="mi">0</span><span class="p">]][</span><span class="n">edge</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">time</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">times</span><span class="p">[</span><span class="n">time</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">def</span> <span class="nf">get_meta_graph</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">metas</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">target_type</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">edge_list</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">target_type</span><span class="p">]:</span>
+                <span class="k">for</span> <span class="n">r_type</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="n">source_type</span><span class="p">]:</span>
+                    <span class="n">metas</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">target_type</span><span class="p">,</span> <span class="n">source_type</span><span class="p">,</span> <span class="n">r_type</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">metas</span>
+
+    <span class="k">def</span> <span class="nf">get_types</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">node_feature</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+
+<span class="k">def</span> <span class="nf">load_data</span><span class="p">(</span><span class="n">file_path</span><span class="p">):</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">file_path</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s1">&#39;,&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">dropna</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">convert_defaultdict_to_dict</span><span class="p">(</span><span class="n">graph</span><span class="p">):</span>
+    <span class="n">edg</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">k1</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">k1</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">edg</span><span class="p">:</span>
+            <span class="n">edg</span><span class="p">[</span><span class="n">k1</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">k2</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">k1</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">k2</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">edg</span><span class="p">[</span><span class="n">k1</span><span class="p">]:</span>
+                <span class="n">edg</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">k3</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">k3</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">edg</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">]:</span>
+                    <span class="n">edg</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">][</span><span class="n">k3</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="k">for</span> <span class="n">e1</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">][</span><span class="n">k3</span><span class="p">]:</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">][</span><span class="n">k3</span><span class="p">][</span><span class="n">e1</span><span class="p">])</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">edg</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">][</span><span class="n">k3</span><span class="p">][</span><span class="n">e1</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                    <span class="k">for</span> <span class="n">e2</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">][</span><span class="n">k3</span><span class="p">][</span><span class="n">e1</span><span class="p">]:</span>
+                        <span class="n">edg</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">][</span><span class="n">k3</span><span class="p">][</span><span class="n">e1</span><span class="p">][</span><span class="n">e2</span><span class="p">]</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="n">k1</span><span class="p">][</span><span class="n">k2</span><span class="p">][</span><span class="n">k3</span><span class="p">][</span><span class="n">e1</span><span class="p">][</span><span class="n">e2</span><span class="p">]</span>
+
+    <span class="n">graph</span><span class="o">.</span><span class="n">edge_list</span> <span class="o">=</span> <span class="n">edg</span>
+    <span class="k">return</span> <span class="n">graph</span>
+
+<span class="k">def</span> <span class="nf">load_dataa</span><span class="p">(</span><span class="n">file_path</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">file_path</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">build_graph</span><span class="p">():</span>
+    <span class="n">graph</span> <span class="o">=</span> <span class="n">Graph</span><span class="p">()</span>
+
+    <span class="n">author_data</span> <span class="o">=</span> <span class="n">load_data</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">conf_data</span> <span class="o">=</span> <span class="n">load_data</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">paper_data</span> <span class="o">=</span> <span class="n">load_data</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">term_data</span> <span class="o">=</span> <span class="n">load_data</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">author_data</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">graph</span><span class="o">.</span><span class="n">add_node</span><span class="p">({</span><span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;author&#39;</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]),</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">],</span> <span class="s1">&#39;label&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]})</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">conf_data</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">graph</span><span class="o">.</span><span class="n">add_node</span><span class="p">({</span><span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;conf&#39;</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]),</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]})</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">paper_data</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">graph</span><span class="o">.</span><span class="n">add_node</span><span class="p">({</span><span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]),</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]})</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">term_data</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">graph</span><span class="o">.</span><span class="n">add_node</span><span class="p">({</span><span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;term&#39;</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;id&#39;</span><span class="p">]),</span> <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">]})</span>
+
+    <span class="n">author_write_edges</span> <span class="o">=</span> <span class="n">load_dataa</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">conf_receive_edges</span> <span class="o">=</span> <span class="n">load_dataa</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">paper_was_published_in_term_edges</span> <span class="o">=</span> <span class="n">load_dataa</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">paper_was_received_by_conf_edges</span> <span class="o">=</span> <span class="n">load_dataa</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">paper_was_written_by_author_edges</span> <span class="o">=</span> <span class="n">load_dataa</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+    <span class="n">term_publish_paper_edges</span> <span class="o">=</span> <span class="n">load_dataa</span><span class="p">(</span><span class="s1">&#39;/path/to/file.csv&#39;</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">author_write_edges</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">graph</span><span class="o">.</span><span class="n">add_edge</span><span class="p">(</span><span class="n">source_node</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;author&#39;</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;src_id&#39;</span><span class="p">])},</span>
+                       <span class="n">target_node</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;id&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s1">&#39;dst_id&#39;</span><span class="p">])},</span>
+                       <span class="n">relation_type</span><span class="o">=</span><span class="s1">&#39;write&#39;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">graph</span>
+
+<span class="k">def</span> <span class="nf">add_node_features</span><span class="p">(</span><span class="n">graph</span><span class="p">):</span>
+    <span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="s1">&#39;author&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_bacward</span><span class="p">[</span><span class="s1">&#39;author&#39;</span><span class="p">])</span>
+    <span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="s1">&#39;conf&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_bacward</span><span class="p">[</span><span class="s1">&#39;conf&#39;</span><span class="p">])</span>
+    <span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_bacward</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">])</span>
+    <span class="n">graph</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="s1">&#39;term&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">node_bacward</span><span class="p">[</span><span class="s1">&#39;term&#39;</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">graph</span>
+
+<span class="n">graph</span> <span class="o">=</span> <span class="n">build_graph</span><span class="p">()</span>
+<span class="n">graph</span> <span class="o">=</span> <span class="n">add_node_features</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+<span class="n">graph</span> <span class="o">=</span> <span class="n">convert_defaultdict_to_dict</span><span class="p">(</span><span class="n">graph</span><span class="p">)</span>
+
+<span class="n">save_path</span> <span class="o">=</span> <span class="s1">&#39;/path/to/save/graph.pk&#39;</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">save_path</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+    <span class="n">dill</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Graph with node features saved as </span><span class="si">{</span><span class="n">save_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="apply-a-new-example">
+<h2>Apply a new example<a class="headerlink" href="#apply-a-new-example" title="Permalink to this heading">¶</a></h2>
+<p>In this section, we will guide users on how to add a new example.</p>
+<p><strong>Step 1: Add Pretrain and Fine-tuning Scripts</strong></p>
+<p>Most existing graph-based models follow the “pretrain, fine-tuning” paradigm. Therefore, the implementation of an example typically consists of two types of scripts: the pretrain and fine-tuning scripts. If the model does not support multi-task fine-tuning, there can be multiple fine-tuning scripts.</p>
+<p>For example, in WalkLM, the <cite>example</cite> folder contains <cite>pretrain.py</cite>, <cite>nc_ft.py</cite>, and <cite>lp_ft.py</cite>.</p>
+<p>Therefore, when users add a new example, they only need to provide the complete versions of these two types of scripts.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Please note that existing graph foundation models have various pretraining and fine-tuning methods, and there are no strict limitations on the specific implementation process.
+However, to ensure fairness in baseline comparisons in benchmarks, we restrict the inputs and evaluation metrics for fine-tuning in each example.</p>
+</div>
+<p><strong>Step 2: Add Graph Preprocessing, Conv, and Model</strong></p>
+<p>During the implementation process, it is highly likely that Graph Preprocessing (e.g., designing instructions in instruction fine-tuning), as well as adding convolution layers and models, will be involved.</p>
+<p>We encourage users to abstract the Graph Preprocessing process into a separate class or method and add it to <cite>ggfm.data</cite>.</p>
+<p>Following the guidelines of <a class="reference external" href="https://www.pyg.org/">PyG</a> and <a class="reference external" href="https://github.com/dmlc/dgl">DGL</a>, for adding convolution layers and models, we adhere to the same conventions.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="quick_start.html" class="btn btn-neutral float-left" title="Quick Start" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../api/ggfm.data.html" class="btn btn-neutral float-right" title="ggfm.data" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

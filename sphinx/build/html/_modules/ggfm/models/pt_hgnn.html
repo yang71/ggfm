@@ -1,0 +1,541 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ggfm.models.pt_hgnn &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/install.html">Install</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/quick_start.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/developer_guide.html">Developer Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.models.html">ggfm.models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.evaluate.html">ggfm.evaluation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ggfm.models.pt_hgnn</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ggfm.models.pt_hgnn</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">from</span> <span class="nn">torch</span> <span class="kn">import</span> <span class="n">nn</span>
+
+<span class="kn">from</span> <span class="nn">ggfm.conv</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">gensim.parsing.preprocessing</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+<span class="c1"># from .cython_util import *</span>
+
+
+<div class="viewcode-block" id="PT_HGNN"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN">[docs]</a><span class="k">class</span> <span class="nc">PT_HGNN</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    PT-HGNN</span>
+<span class="sd">    the model for heterogeneous graph neural network with pre-training.</span>
+<span class="sd">    Composed of a GNN, a link prediction decoder, an attribute prediction decoder, and a text prediction decoder.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gnn</span><span class="p">,</span> <span class="n">rem_edge_list</span><span class="p">,</span> <span class="n">attr_decoder</span><span class="p">,</span> <span class="n">types</span><span class="p">,</span> <span class="n">neg_samp_num</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">neg_queue_size</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">PT_HGNN</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">gnn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">types</span> <span class="o">=</span> <span class="n">types</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gnn</span> <span class="o">=</span> <span class="n">gnn</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">params</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue_size</span> <span class="o">=</span> <span class="n">neg_queue_size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="n">source_type</span><span class="p">,</span> <span class="n">relation_type</span><span class="p">)</span>
+                <span class="n">matcher</span> <span class="o">=</span> <span class="n">Matcher</span><span class="p">(</span><span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">([])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">matcher</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">matcher</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">attr_decoder</span> <span class="o">=</span> <span class="n">attr_decoder</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">init_emb</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">gnn</span><span class="o">.</span><span class="n">in_dim</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ce</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">CrossEntropyLoss</span><span class="p">(</span><span class="n">reduction</span><span class="o">=</span><span class="s1">&#39;none&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_samp_num</span> <span class="o">=</span> <span class="n">neg_samp_num</span>
+
+        <span class="c1"># additional part (structure level)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">f_k</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Bilinear</span><span class="p">(</span><span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">xavier_uniform_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f_k</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigm</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Sigmoid</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bce_loss</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BCEWithLogitsLoss</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_structure_queue_size</span> <span class="o">=</span> <span class="mi">127</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_structure_queue</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_structure_queue_size</span><span class="p">,</span> <span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">device</span> <span class="o">=</span> <span class="n">device</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">structure_map_dict</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">structure_matcher</span> <span class="o">=</span> <span class="n">Matcher</span><span class="p">(</span><span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">structure_map_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                <span class="n">structure_map</span> <span class="o">=</span> <span class="n">StructureMapping</span><span class="p">(</span><span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">gnn</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">structure_map_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">structure_map</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">structure_map</span><span class="p">)</span>
+
+<div class="viewcode-block" id="PT_HGNN.neg_sample"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN.neg_sample">[docs]</a>    <span class="k">def</span> <span class="nf">neg_sample</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">souce_node_list</span><span class="p">,</span> <span class="n">pos_node_list</span><span class="p">):</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">souce_node_list</span><span class="p">)</span>
+        <span class="n">neg_nodes</span> <span class="o">=</span> <span class="n">negative_sample</span><span class="p">(</span><span class="n">souce_node_list</span><span class="p">,</span> <span class="n">pos_node_list</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_samp_num</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">neg_nodes</span></div>
+
+<div class="viewcode-block" id="PT_HGNN.neg_sample_ori"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN.neg_sample_ori">[docs]</a>    <span class="k">def</span> <span class="nf">neg_sample_ori</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">souce_node_list</span><span class="p">,</span> <span class="n">pos_node_list</span><span class="p">):</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">souce_node_list</span><span class="p">)</span>
+        <span class="n">neg_nodes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="kc">True</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">pos_node_list</span><span class="p">}</span>
+        <span class="n">tot</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">souce_node_list</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">node_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+                <span class="n">neg_nodes</span> <span class="o">+=</span> <span class="p">[</span><span class="n">node_id</span><span class="p">]</span>
+                <span class="n">tot</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">tot</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_samp_num</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">return</span> <span class="n">neg_nodes</span></div>
+
+<div class="viewcode-block" id="PT_HGNN.forward"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_feature</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">gnn</span><span class="p">(</span><span class="n">node_feature</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">)</span></div>
+
+<div class="viewcode-block" id="PT_HGNN.link_loss"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN.link_loss">[docs]</a>    <span class="k">def</span> <span class="nf">link_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_emb</span><span class="p">,</span> <span class="n">rem_edge_list</span><span class="p">,</span> <span class="n">ori_edge_list</span><span class="p">,</span> <span class="n">node_dict</span><span class="p">,</span> <span class="n">target_type</span><span class="p">,</span> <span class="n">use_queue</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                  <span class="n">update_queue</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">relation_level</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">losses</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">ress</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">cos</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">CosineSimilarity</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">source_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">relation_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                    <span class="k">continue</span>
+                <span class="n">rem_edges</span> <span class="o">=</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rem_edges</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">8</span><span class="p">:</span>
+                    <span class="k">continue</span>
+
+                <span class="c1"># if relation_level:</span>
+                <span class="c1">#     ori_edges = []</span>
+                <span class="c1">#     for ori_source_type in rem_edge_list:</span>
+                <span class="c1">#         if ori_source_type not in self.link_dec_dict:</span>
+                <span class="c1">#             continue</span>
+                <span class="c1">#         for ori_relation_type in rem_edge_list[ori_source_type]:</span>
+                <span class="c1">#             tmp_edge = ori_edge_list[ori_source_type][ori_relation_type].copy()</span>
+                <span class="c1">#             tmp_edge[:, 1] = tmp_edge[:, 1] + node_dict[ori_source_type][0]</span>
+                <span class="c1">#             ori_edges.append(tmp_edge)</span>
+                <span class="c1">#             del tmp_edge</span>
+                <span class="c1">#     ori_edges = np.vstack(ori_edges)</span>
+                <span class="c1"># else:</span>
+                <span class="c1">#     ori_edges = ori_edge_list[source_type][relation_type]</span>
+                <span class="k">if</span> <span class="n">relation_level</span><span class="p">:</span>
+                    <span class="n">ori_edges</span> <span class="o">=</span> <span class="n">ori_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                    <span class="n">ori_edges</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+=</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">ori_edges</span> <span class="o">=</span> <span class="n">ori_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                <span class="c1"># ori_edges = ori_edge_list[source_type][relation_type]</span>
+                <span class="n">matcher</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+
+                <span class="c1"># with torch.no_grad():</span>
+                <span class="n">target_ids</span><span class="p">,</span> <span class="n">positive_source_ids</span> <span class="o">=</span> <span class="n">rem_edges</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">rem_edges</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="n">n_nodes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_ids</span><span class="p">)</span>
+                <span class="c1"># source_node_ids contains the all negative nodes, which we select the negative from it</span>
+                <span class="n">source_node_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">ori_edges</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])</span>
+
+                <span class="c1"># 直接在数据里面进行采样的操作，对应的就是采样的结果</span>
+                <span class="n">negative_source_ids</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_sample</span><span class="p">(</span><span class="n">source_node_ids</span><span class="p">,</span> \
+                                                       <span class="n">ori_edges</span><span class="p">[</span><span class="n">ori_edges</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">t_id</span><span class="p">][:,</span> <span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">t_id</span> <span class="ow">in</span> <span class="n">target_ids</span><span class="p">]</span>
+                <span class="c1"># negative_source_ids = [self.neg_sample_ori(source_node_ids, \</span>
+                <span class="c1">#     ori_edges[ori_edges[:, 0] == t_id][:, 1].tolist()) for t_id in target_ids]</span>
+                <span class="n">sn</span> <span class="o">=</span> <span class="nb">min</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">neg_ids</span><span class="p">)</span> <span class="k">for</span> <span class="n">neg_ids</span> <span class="ow">in</span> <span class="n">negative_source_ids</span><span class="p">])</span>
+                <span class="n">negative_source_ids</span> <span class="o">=</span> <span class="p">[</span><span class="n">neg_ids</span><span class="p">[:</span><span class="n">sn</span><span class="p">]</span> <span class="k">for</span> <span class="n">neg_ids</span> <span class="ow">in</span> <span class="n">negative_source_ids</span><span class="p">]</span>
+
+                <span class="c1"># Q | K | K-</span>
+                <span class="k">if</span> <span class="n">relation_level</span><span class="p">:</span>
+                    <span class="c1"># 这里直接将很相似的两个点进行剔除的操作，保留相应的节点数量</span>
+                    <span class="n">positive_source_ids</span> <span class="o">=</span> <span class="n">positive_source_ids</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">query_emb</span> <span class="o">=</span> <span class="n">node_emb</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">positive_source_ids</span><span class="p">)]</span>
+                    <span class="n">neg_emb</span> <span class="o">=</span> <span class="n">node_emb</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">negative_source_ids</span><span class="p">)]</span>
+                    <span class="n">masks</span> <span class="o">=</span> <span class="n">cos</span><span class="p">(</span><span class="n">query_emb</span><span class="p">,</span> <span class="n">neg_emb</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.999</span>
+                    <span class="n">sn</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">masks</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+                    <span class="c1"># negative_source_ids = np.array(negative_source_ids)</span>
+                    <span class="c1"># negative_source_ids = np.array([idxs[m][:sn] for idxs, m in zip(negative_source_ids, masks.cpu().numpy())])</span>
+                    <span class="n">negative_source_ids</span> <span class="o">=</span> <span class="n">to2Darr</span><span class="p">(</span><span class="n">negative_source_ids</span><span class="p">)</span>
+                    <span class="n">negative_source_ids</span> <span class="o">=</span> <span class="n">to2Darr</span><span class="p">(</span>
+                        <span class="p">[</span><span class="n">idxs</span><span class="p">[</span><span class="n">m</span><span class="p">][:</span><span class="n">sn</span><span class="p">]</span> <span class="k">for</span> <span class="n">idxs</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">negative_source_ids</span><span class="p">,</span> <span class="n">masks</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">())])</span>
+
+                <span class="k">if</span> <span class="n">relation_level</span><span class="p">:</span>
+                    <span class="n">source_ids</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">positive_source_ids</span><span class="p">,</span> <span class="n">negative_source_ids</span><span class="p">),</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">source_ids</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">positive_source_ids</span><span class="p">,</span> <span class="n">negative_source_ids</span><span class="p">),</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">emb</span> <span class="o">=</span> <span class="n">node_emb</span><span class="p">[</span><span class="n">source_ids</span><span class="p">]</span>
+                <span class="c1"># print(&quot;emb shape:&quot;, emb.shape)</span>
+                <span class="k">if</span> <span class="n">use_queue</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">])</span> <span class="o">//</span> <span class="n">n_nodes</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">tmp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                    <span class="n">stx</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span> <span class="o">//</span> <span class="n">n_nodes</span>
+                    <span class="n">tmp</span> <span class="o">=</span> <span class="n">tmp</span><span class="p">[:</span> <span class="n">stx</span> <span class="o">*</span> <span class="n">n_nodes</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_nodes</span><span class="p">,</span> <span class="n">stx</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">relation_level</span><span class="p">:</span>
+                        <span class="n">rep_size</span> <span class="o">=</span> <span class="n">sn</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">stx</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">rep_size</span> <span class="o">=</span> <span class="n">sn</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">stx</span>
+                    <span class="c1"># rep_size = sn + 1 + stx</span>
+                    <span class="n">source_emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">emb</span><span class="p">,</span> <span class="n">tmp</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="k">del</span> <span class="n">tmp</span>
+                    <span class="n">source_emb</span> <span class="o">=</span> <span class="n">source_emb</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_nodes</span> <span class="o">*</span> <span class="n">rep_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">relation_level</span><span class="p">:</span>
+                        <span class="n">rep_size</span> <span class="o">=</span> <span class="n">sn</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">rep_size</span> <span class="o">=</span> <span class="n">sn</span> <span class="o">+</span> <span class="mi">1</span>
+                    <span class="n">source_emb</span> <span class="o">=</span> <span class="n">emb</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">source_ids</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">rep_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="n">target_ids</span> <span class="o">=</span> <span class="n">target_ids</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">rep_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">target_emb</span> <span class="o">=</span> <span class="n">node_emb</span><span class="p">[</span><span class="n">target_ids</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)]</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="n">matcher</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">target_emb</span><span class="p">,</span> <span class="n">source_emb</span><span class="p">)</span>
+                <span class="n">res</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_nodes</span><span class="p">,</span> <span class="n">rep_size</span><span class="p">)</span>
+                <span class="n">ress</span> <span class="o">+=</span> <span class="p">[</span><span class="n">res</span><span class="o">.</span><span class="n">detach</span><span class="p">()]</span>
+                <span class="n">losses</span> <span class="o">+=</span> <span class="n">F</span><span class="o">.</span><span class="n">log_softmax</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">update_queue</span> <span class="ow">and</span> <span class="s1">&#39;L1&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">relation_type</span> <span class="ow">and</span> <span class="s1">&#39;L2&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">relation_type</span><span class="p">:</span>
+                    <span class="n">tmp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">neg_queue</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span> <span class="o">=</span> \
+                        <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">node_emb</span><span class="p">[</span><span class="n">source_node_ids</span><span class="p">]</span><span class="o">.</span><span class="n">detach</span><span class="p">(),</span> <span class="n">tmp</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)[:</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_queue_size</span> <span class="o">*</span> <span class="n">n_nodes</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="o">-</span><span class="n">losses</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">ress</span><span class="p">),</span> <span class="n">ress</span></div>
+
+<div class="viewcode-block" id="PT_HGNN.structure_loss"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN.structure_loss">[docs]</a>    <span class="k">def</span> <span class="nf">structure_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_emb</span><span class="p">,</span> <span class="n">rem_edge_list</span><span class="p">,</span> <span class="n">ori_edge_list</span><span class="p">,</span> <span class="n">node_dict</span><span class="p">,</span> <span class="n">target_type</span><span class="p">,</span> <span class="n">use_queue</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                       <span class="n">update_queue</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">relation_level</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="n">losses</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># ress = []</span>
+
+        <span class="n">node_nbr_dict</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span>  <span class="c1"># target_id</span>
+            <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>  <span class="c1"># source_type</span>
+                <span class="k">lambda</span><span class="p">:</span> <span class="n">defaultdict</span><span class="p">(</span>  <span class="c1"># relation_type</span>
+                    <span class="nb">list</span>  <span class="c1"># node list</span>
+                <span class="p">)))</span>
+
+        <span class="n">target_node_ids</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">source_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+
+                <span class="k">if</span> <span class="n">relation_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">link_dec_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                    <span class="k">continue</span>
+                <span class="n">rem_edges</span> <span class="o">=</span> <span class="n">rem_edge_list</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rem_edges</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">8</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">tmp_target_ids</span> <span class="o">=</span> <span class="n">rem_edges</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">tmp_target_ids</span><span class="o">.</span><span class="n">tolist</span><span class="p">():</span>
+                    <span class="n">target_node_ids</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">_</span><span class="p">)</span>
+
+                <span class="k">for</span> <span class="n">edge</span> <span class="ow">in</span> <span class="n">rem_edges</span><span class="p">:</span>
+                    <span class="n">node_nbr_dict</span><span class="p">[</span><span class="n">edge</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">target_type</span><span class="p">][</span><span class="mi">0</span><span class="p">]][</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                        <span class="n">edge</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">node_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="n">target_node_ids</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">)</span>
+        <span class="c1"># query_emb   = node_emb[torch.LongTensor(target_node_ids)]</span>
+        <span class="n">schema_emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">([])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">target_id</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">):</span>
+            <span class="n">tar_schema_emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">FloatTensor</span><span class="p">([])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">source_type</span> <span class="ow">in</span> <span class="n">node_nbr_dict</span><span class="p">[</span><span class="n">target_id</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">source_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">structure_map_dict</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="k">for</span> <span class="n">relation_type</span> <span class="ow">in</span> <span class="n">node_nbr_dict</span><span class="p">[</span><span class="n">target_id</span><span class="p">][</span><span class="n">source_type</span><span class="p">]:</span>
+                    <span class="n">structure_map</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">structure_map_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">]</span>
+                    <span class="k">if</span> <span class="n">relation_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">structure_map_dict</span><span class="p">[</span><span class="n">source_type</span><span class="p">]:</span>
+                        <span class="k">continue</span>
+                    <span class="n">tmp_ids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">node_nbr_dict</span><span class="p">[</span><span class="n">target_id</span><span class="p">][</span><span class="n">source_type</span><span class="p">][</span><span class="n">relation_type</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+                    <span class="n">tar_schema_emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">tar_schema_emb</span><span class="p">,</span> <span class="n">structure_map</span><span class="p">(</span><span class="n">node_emb</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">tmp_ids</span><span class="p">)])],</span>
+                                               <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">schema_emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">schema_emb</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">tar_schema_emb</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">keepdim</span><span class="o">=</span><span class="kc">True</span><span class="p">)])</span>
+        <span class="c1"># fixed original no transform data, version : V1</span>
+        <span class="c1"># for target_id in target_node_ids:</span>
+        <span class="c1">#     schema_ids = []</span>
+        <span class="c1">#     for source_type in node_nbr_dict[target_id]:</span>
+        <span class="c1">#         if source_type not in self.link_dec_dict:</span>
+        <span class="c1">#             continue</span>
+        <span class="c1">#         for relation_type in node_nbr_dict[target_id][source_type]:</span>
+        <span class="c1">#             if relation_type not in self.link_dec_dict[source_type]:</span>
+        <span class="c1">#                 continue</span>
+        <span class="c1">#             schema_ids.extend(np.random.choice(node_nbr_dict[target_id][source_type][relation_type], size=5).tolist())</span>
+        <span class="c1">#     # print(&quot;schema ids : &quot;, schema_ids, &quot;node dim shape: &quot;, query_emb.shape[0])</span>
+        <span class="c1">#     schema_emb = torch.cat([schema_emb, torch.mean(node_emb[torch.LongTensor(schema_ids)].detach(), dim=0, keepdim=True)], dim=0)</span>
+
+        <span class="n">schema_emb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigm</span><span class="p">(</span><span class="n">schema_emb</span><span class="p">)</span>
+
+        <span class="n">schema_idxs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">)):</span>
+            <span class="n">schema_idxs</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">idx</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">_</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">idx</span><span class="p">)]</span> <span class="o">+</span> <span class="p">[</span><span class="n">_</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">))])</span>
+        <span class="n">query_schema_emb</span> <span class="o">=</span> <span class="n">schema_emb</span><span class="p">[</span><span class="n">schema_idxs</span><span class="p">]</span>
+
+        <span class="c1"># for _ in range(len(target_node_ids)):</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_structure_queue</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="c1"># print(&quot;tmp shape : &quot;, tmp.shape, &quot; query shema shape : &quot;, query_schema_emb.shape[0])</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">tmp</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">query_schema_emb</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">query_schema_emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">query_schema_emb</span><span class="p">,</span> <span class="n">tmp</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">del</span> <span class="n">tmp</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">neg_structure_queue</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">schema_emb</span><span class="o">.</span><span class="n">detach</span><span class="p">(),</span> <span class="bp">self</span><span class="o">.</span><span class="n">neg_structure_queue</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span>
+                                   <span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">neg_structure_queue_size</span><span class="p">]</span>
+
+        <span class="n">rep_size</span> <span class="o">=</span> <span class="n">query_schema_emb</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">query_emb</span> <span class="o">=</span> <span class="n">node_emb</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">)]</span>
+        <span class="n">query_emb</span> <span class="o">=</span> <span class="n">query_emb</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">rep_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">query_emb</span> <span class="o">=</span> <span class="n">query_emb</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">)</span> <span class="o">*</span> <span class="n">rep_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">query_schema_emb</span> <span class="o">=</span> <span class="n">query_schema_emb</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">)</span> <span class="o">*</span> <span class="n">rep_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">structure_matcher</span><span class="p">(</span><span class="n">query_emb</span><span class="p">,</span> <span class="n">query_schema_emb</span><span class="p">)</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">res</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">target_node_ids</span><span class="p">),</span> <span class="n">rep_size</span><span class="p">)</span>
+
+        <span class="n">losses</span> <span class="o">+=</span> <span class="n">F</span><span class="o">.</span><span class="n">log_softmax</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="o">-</span><span class="n">losses</span></div>
+
+<div class="viewcode-block" id="PT_HGNN.text_loss"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN.text_loss">[docs]</a>    <span class="k">def</span> <span class="nf">text_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reps</span><span class="p">,</span> <span class="n">texts</span><span class="p">,</span> <span class="n">w2v_model</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">parse_text</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">w2v_model</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+            <span class="n">idxs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">pad</span> <span class="o">=</span> <span class="n">w2v_model</span><span class="o">.</span><span class="n">wv</span><span class="o">.</span><span class="n">vocab</span><span class="p">[</span><span class="s1">&#39;eos&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">index</span>
+            <span class="k">for</span> <span class="n">text</span> <span class="ow">in</span> <span class="n">texts</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">word</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;bos&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">preprocess_string</span><span class="p">(</span><span class="n">text</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="s1">&#39;eos&#39;</span><span class="p">]:</span>
+                    <span class="k">if</span> <span class="n">word</span> <span class="ow">in</span> <span class="n">w2v_model</span><span class="o">.</span><span class="n">wv</span><span class="o">.</span><span class="n">vocab</span><span class="p">:</span>
+                        <span class="n">idx</span> <span class="o">+=</span> <span class="p">[</span><span class="n">w2v_model</span><span class="o">.</span><span class="n">wv</span><span class="o">.</span><span class="n">vocab</span><span class="p">[</span><span class="n">word</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="p">]</span>
+                <span class="n">idxs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+            <span class="n">mxl</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">idxs</span><span class="p">])</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="n">inp_idxs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">out_idxs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">masks</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">idxs</span><span class="p">):</span>
+                <span class="n">inp_idxs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">idx</span> <span class="o">+</span> <span class="p">[</span><span class="n">pad</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mxl</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]]</span>
+                <span class="n">out_idxs</span> <span class="o">+=</span> <span class="p">[</span><span class="n">idx</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">+</span> <span class="p">[</span><span class="n">pad</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mxl</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">))]]</span>
+                <span class="n">masks</span> <span class="o">+=</span> <span class="p">[[</span><span class="mi">1</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">))]</span> <span class="o">+</span> <span class="p">[</span><span class="mi">0</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mxl</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]]</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">inp_idxs</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> \
+                <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">(</span><span class="n">out_idxs</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">),</span> <span class="n">torch</span><span class="o">.</span><span class="n">BoolTensor</span><span class="p">(</span><span class="n">masks</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span>
+                <span class="n">device</span><span class="p">)</span>
+
+        <span class="n">inp_idxs</span><span class="p">,</span> <span class="n">out_idxs</span><span class="p">,</span> <span class="n">masks</span> <span class="o">=</span> <span class="n">parse_text</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">w2v_model</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+        <span class="n">pred_prob</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">attr_decoder</span><span class="p">(</span><span class="n">inp_idxs</span><span class="p">,</span> <span class="n">reps</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">inp_idxs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">ce</span><span class="p">(</span><span class="n">pred_prob</span><span class="p">[</span><span class="n">masks</span><span class="p">],</span> <span class="n">out_idxs</span><span class="p">[</span><span class="n">masks</span><span class="p">])</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="PT_HGNN.feat_loss"><a class="viewcode-back" href="../../../generated/ggfm.models.PT_HGNN.html#ggfm.models.PT_HGNN.feat_loss">[docs]</a>    <span class="k">def</span> <span class="nf">feat_loss</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reps</span><span class="p">,</span> <span class="n">out</span><span class="p">):</span>
+        <span class="k">return</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">attr_decoder</span><span class="p">(</span><span class="n">reps</span><span class="p">,</span> <span class="n">out</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span></div></div>
+
+
+<span class="k">class</span> <span class="nc">Classifier</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Classifier</span>
+<span class="sd">    the model for classification.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Classifier</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span> <span class="o">=</span> <span class="n">n_hid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_out</span> <span class="o">=</span> <span class="n">n_out</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="n">tx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">linear</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">log_softmax</span><span class="p">(</span><span class="n">tx</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(),</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">(n_hid=</span><span class="si">{}</span><span class="s1">, n_out=</span><span class="si">{}</span><span class="s1">)&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_out</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">Matcher</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Matching between a pair of nodes to conduct link prediction.</span>
+<span class="sd">        Use multi-head attention as matching model.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Matcher</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span> <span class="o">=</span> <span class="n">n_hid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sqrt_hd</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n_out</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cosine</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">CosineSimilarity</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">temperature</span> <span class="o">=</span> <span class="n">temperature</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">ty</span><span class="p">,</span> <span class="n">use_norm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">tx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">linear</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">use_norm</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">cosine</span><span class="p">(</span><span class="n">tx</span><span class="p">,</span> <span class="n">ty</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">temperature</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">tx</span> <span class="o">*</span> <span class="n">ty</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">sqrt_hd</span>
+
+    <span class="k">def</span> <span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s1">&#39;</span><span class="si">{}</span><span class="s1">(n_hid=</span><span class="si">{}</span><span class="s1">)&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">StructureMapping</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Structure Mapping</span>
+<span class="sd">    use a simple MLP to map the structure information to the same space of node embeddings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">StructureMapping</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span> <span class="o">=</span> <span class="n">n_hid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">n_hid</span><span class="p">,</span> <span class="n">n_out</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">linear</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+
+
+<span class="k">class</span> <span class="nc">GNN</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    GNN</span>
+<span class="sd">    the model for graph neural network.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_dim</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">num_types</span><span class="p">,</span> <span class="n">num_relations</span><span class="p">,</span> <span class="n">n_heads</span><span class="p">,</span> <span class="n">n_layers</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">conv_name</span><span class="o">=</span><span class="s1">&#39;hgt&#39;</span><span class="p">,</span>
+                 <span class="n">prev_norm</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">last_norm</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">use_RTE</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">GNN</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_types</span> <span class="o">=</span> <span class="n">num_types</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_dim</span> <span class="o">=</span> <span class="n">in_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span> <span class="o">=</span> <span class="n">n_hid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adapt_ws</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_types</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">adapt_ws</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">in_dim</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_layers</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="n">GeneralConv</span><span class="p">(</span><span class="n">conv_name</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">num_types</span><span class="p">,</span> <span class="n">num_relations</span><span class="p">,</span> <span class="n">n_heads</span><span class="p">,</span> <span class="n">dropout</span><span class="p">,</span> <span class="n">use_norm</span><span class="o">=</span><span class="n">prev_norm</span><span class="p">,</span>
+                            <span class="n">use_RTE</span><span class="o">=</span><span class="n">use_RTE</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="n">GeneralConv</span><span class="p">(</span><span class="n">conv_name</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">n_hid</span><span class="p">,</span> <span class="n">num_types</span><span class="p">,</span> <span class="n">num_relations</span><span class="p">,</span> <span class="n">n_heads</span><span class="p">,</span> <span class="n">dropout</span><span class="p">,</span> <span class="n">use_norm</span><span class="o">=</span><span class="n">last_norm</span><span class="p">,</span>
+                        <span class="n">use_RTE</span><span class="o">=</span><span class="n">use_RTE</span><span class="p">))</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_feature</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">):</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">node_feature</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_hid</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">node_feature</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">t_id</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_types</span><span class="p">):</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="p">(</span><span class="n">node_type</span> <span class="o">==</span> <span class="nb">int</span><span class="p">(</span><span class="n">t_id</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">idx</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">res</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">adapt_ws</span><span class="p">[</span><span class="n">t_id</span><span class="p">](</span><span class="n">node_feature</span><span class="p">[</span><span class="n">idx</span><span class="p">]))</span>
+        <span class="n">meta_xs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
+        <span class="k">del</span> <span class="n">res</span>
+        <span class="k">for</span> <span class="n">gc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gcs</span><span class="p">:</span>
+            <span class="n">meta_xs</span> <span class="o">=</span> <span class="n">gc</span><span class="p">(</span><span class="n">meta_xs</span><span class="p">,</span> <span class="n">node_type</span><span class="p">,</span> <span class="n">edge_index</span><span class="p">,</span> <span class="n">edge_type</span><span class="p">,</span> <span class="n">edge_time</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">meta_xs</span>
+
+
+<span class="k">class</span> <span class="nc">RNNModel</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Container module with an encoder, a recurrent module, and a decoder.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_word</span><span class="p">,</span> <span class="n">ninp</span><span class="p">,</span> <span class="n">nhid</span><span class="p">,</span> <span class="n">nlayers</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="mf">0.2</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">RNNModel</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">drop</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rnn</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">LSTM</span><span class="p">(</span><span class="n">nhid</span><span class="p">,</span> <span class="n">nhid</span><span class="p">,</span> <span class="n">nlayers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Embedding</span><span class="p">(</span><span class="n">n_word</span><span class="p">,</span> <span class="n">nhid</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">nhid</span><span class="p">,</span> <span class="n">n_word</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adp</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">ninp</span> <span class="o">+</span> <span class="n">nhid</span><span class="p">,</span> <span class="n">nhid</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inp</span><span class="p">,</span> <span class="n">hidden</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="n">emb</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="p">(</span><span class="n">inp</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">hidden</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">emb</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">((</span><span class="n">emb</span><span class="p">,</span> <span class="n">hidden</span><span class="p">),</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">emb</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">gelu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">adp</span><span class="p">(</span><span class="n">emb</span><span class="p">))</span>
+        <span class="n">output</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rnn</span><span class="p">(</span><span class="n">emb</span><span class="p">)</span>
+        <span class="n">decoded</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">output</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">decoded</span>
+
+    <span class="k">def</span> <span class="nf">from_w2v</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">w2v</span><span class="p">):</span>
+        <span class="n">initrange</span> <span class="o">=</span> <span class="mf">0.1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">data</span> <span class="o">=</span> <span class="n">w2v</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="o">.</span><span class="n">weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="o">.</span><span class="n">weight</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">encoder</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">False</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,145 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Start &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../_static/doctools.js?v=888ff710"></script>
+      <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Developer Guide" href="developer_guide.html" />
+    <link rel="prev" title="Install" href="install.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="install.html">Install</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Start</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#run-experiments">Run experiments</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.models.html">ggfm.models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.evaluate.html">ggfm.evaluation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Quick Start</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/notes/quick_start.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="quick-start">
+<h1>Quick Start<a class="headerlink" href="#quick-start" title="Permalink to this heading">¶</a></h1>
+<section id="run-experiments">
+<h2>Run experiments<a class="headerlink" href="#run-experiments" title="Permalink to this heading">¶</a></h2>
+<p>Our models are located in the <cite>examples</cite> folder. Most GFM models follow the “pretrain, fine-tuning” paradigm, so each example typically includes two types of files: <cite>pretrain.py</cite> and <cite>{task}_ft.py</cite> (where <cite>task</cite> can be either node classification or link prediction, for example: in WalkLM, there are <cite>pretrain.py</cite>, <cite>nc_ft.py</cite>, and <cite>lp_ft.py</cite>).</p>
+<p>Taking WalkLM as an example, we guide the user on how to implement model pretraining and fine-tuning.</p>
+<p>During the pretraining and fine-tuning processes, users can either customize parameters or run with the default parameters we have set.</p>
+<p>First, the user can run <cite>pretrain.py</cite> to generate a pretrained model, for example:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># cd ./examples/walklm</span>
+<span class="c1"># set parameters if necessary</span>
+python<span class="w"> </span>pretrain.py
+</pre></div>
+</div>
+<p>Alternatively, the pretrained model can be directly downloaded from <a class="reference external" href="https://github.com/yang71/ggfm/tree/master">here</a> to be used for downstream task fine-tuning.</p>
+<p>Once the pretrained model parameters are obtained, the user can proceed with fine-tuning, for example:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># cd ./examples/walklm</span>
+<span class="c1"># set parameters if necessary</span>
+python<span class="w"> </span>nc_ft.py
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If users wish to switch datasets during training, they can simply modify the relevant parameters.
+If users want to customize a dataset, they can refer to the <cite>Evaluate a new dataset</cite> section in the <cite>Developer Guide</cite>.</p>
+</div>
+<p>Finally, the user can obtain the training results for node classification and link prediction tasks.
+We use <cite>Accuracy</cite> as the evaluation metric for node classification, and <cite>NDCG</cite> and <cite>MRR</cite> as the evaluation metrics for link prediction tasks.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="install.html" class="btn btn-neutral float-left" title="Install" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="developer_guide.html" class="btn btn-neutral float-right" title="Developer Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

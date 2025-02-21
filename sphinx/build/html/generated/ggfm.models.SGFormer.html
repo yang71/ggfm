@@ -1,0 +1,184 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ggfm.models.SGFormer &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../_static/doctools.js?v=888ff710"></script>
+      <script src="../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="ggfm.models.HeteroLlamaForCausalLM" href="ggfm.models.HeteroLlamaForCausalLM.html" />
+    <link rel="prev" title="ggfm.models.PT_HGNN" href="ggfm.models.PT_HGNN.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../notes/install.html">Install</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../notes/quick_start.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../notes/developer_guide.html">Developer Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../api/ggfm.models.html">ggfm.models</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.HGT.html">ggfm.models.HGT</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.MPNN.html">ggfm.models.MPNN</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.GPT_GNN.html">ggfm.models.GPT_GNN</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.LLAGA.html">ggfm.models.LLAGA</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.Matcher.html">ggfm.models.Matcher</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.RNNModel.html">ggfm.models.RNNModel</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.Classifier.html">ggfm.models.Classifier</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.LinkPredictor.html">ggfm.models.LinkPredictor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.CLIP.html">ggfm.models.CLIP</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.GraphLlamaModel.html">ggfm.models.GraphLlamaModel</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.GraphLlamaForCausalLM.html">ggfm.models.GraphLlamaForCausalLM</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.GraphGPT_pl.html">ggfm.models.GraphGPT_pl</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.PT_HGNN.html">ggfm.models.PT_HGNN</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">ggfm.models.SGFormer</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ggfm.models.SGFormer"><code class="docutils literal notranslate"><span class="pre">SGFormer</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggfm.models.SGFormer.forward"><code class="docutils literal notranslate"><span class="pre">SGFormer.forward()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggfm.models.SGFormer.get_attentions"><code class="docutils literal notranslate"><span class="pre">SGFormer.get_attentions()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggfm.models.SGFormer.reset_parameters"><code class="docutils literal notranslate"><span class="pre">SGFormer.reset_parameters()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggfm.models.SGFormer.training"><code class="docutils literal notranslate"><span class="pre">SGFormer.training</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="ggfm.models.HeteroLlamaForCausalLM.html">ggfm.models.HeteroLlamaForCausalLM</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../api/ggfm.evaluate.html">ggfm.evaluation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../api/ggfm.models.html">ggfm.models</a></li>
+      <li class="breadcrumb-item active">ggfm.models.SGFormer</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/generated/ggfm.models.SGFormer.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="ggfm-models-sgformer">
+<h1>ggfm.models.SGFormer<a class="headerlink" href="#ggfm-models-sgformer" title="Permalink to this heading">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggfm.models.SGFormer">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggfm.models.</span></span><span class="sig-name descname"><span class="pre">SGFormer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">in_channels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_channels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">out_channels</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trans_num_layers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trans_num_heads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trans_dropout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trans_use_bn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trans_use_residual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trans_use_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trans_use_act</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnn_num_layers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnn_dropout</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnn_use_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnn_use_init</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnn_use_bn</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnn_use_residual</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gnn_use_act</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_graph</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">aggregate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'add'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ggfm/models/sgformer.html#SGFormer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggfm.models.SGFormer" title="Permalink to this definition">¶</a></dt>
+<dd><p>SGFormer model from the <a href="#id1"><span class="problematic" id="id2">`</span></a>”SGFormer: Spatial Graph Transformer for Molecular Property Prediction”
+:param in_channels: Number of input features.
+:type in_channels: int
+:param hidden_channels: Number of hidden features.
+:type hidden_channels: int
+:param out_channels: Number of output
+:type out_channels: int</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ggfm.models.SGFormer.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">edge_index</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ggfm/models/sgformer.html#SGFormer.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggfm.models.SGFormer.forward" title="Permalink to this definition">¶</a></dt>
+<dd><p>Defines the computation performed at every call.</p>
+<p>Should be overridden by all subclasses.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Although the recipe for forward pass needs to be defined within
+this function, one should call the <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code> instance afterwards
+instead of this since the former takes care of running the
+registered hooks while the latter silently ignores them.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggfm.models.SGFormer.get_attentions">
+<span class="sig-name descname"><span class="pre">get_attentions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ggfm/models/sgformer.html#SGFormer.get_attentions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggfm.models.SGFormer.get_attentions" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggfm.models.SGFormer.reset_parameters">
+<span class="sig-name descname"><span class="pre">reset_parameters</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/ggfm/models/sgformer.html#SGFormer.reset_parameters"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggfm.models.SGFormer.reset_parameters" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggfm.models.SGFormer.training">
+<span class="sig-name descname"><span class="pre">training</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#ggfm.models.SGFormer.training" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="ggfm.models.PT_HGNN.html" class="btn btn-neutral float-left" title="ggfm.models.PT_HGNN" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="ggfm.models.HeteroLlamaForCausalLM.html" class="btn btn-neutral float-right" title="ggfm.models.HeteroLlamaForCausalLM" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

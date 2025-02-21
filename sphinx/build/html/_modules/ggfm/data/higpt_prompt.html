@@ -1,0 +1,545 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ggfm.data.higpt_prompt &mdash; GGFM 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js?v=e031e9a9"></script>
+      <script src="../../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=4825356b"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            GGFM
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">NOTES</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/install.html">Install</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/quick_start.html">Quick Start</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../notes/developer_guide.html">Developer Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.data.html">ggfm.data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.conv.html">ggfm.conv</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.models.html">ggfm.models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api/ggfm.evaluate.html">ggfm.evaluation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">GGFM</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ggfm.data.higpt_prompt</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ggfm.data.higpt_prompt</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">dgl</span>
+<span class="kn">from</span> <span class="nn">dgl.data.utils</span> <span class="kn">import</span> <span class="n">load_graphs</span><span class="p">,</span> <span class="n">save_graphs</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span> <span class="nn">tqdm</span> <span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
+<span class="kn">from</span> <span class="nn">torch_geometric.data</span> <span class="kn">import</span> <span class="n">HeteroData</span>
+<span class="kn">from</span> <span class="nn">sentence_transformers</span> <span class="kn">import</span> <span class="n">SentenceTransformer</span>
+<span class="kn">from</span> <span class="nn">.graph</span> <span class="kn">import</span> <span class="n">renamed_load</span>
+
+
+<span class="k">def</span> <span class="nf">dgl_to_pyg</span><span class="p">(</span><span class="n">dgl_graph</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert DGL graph to PyG format.</span>
+<span class="sd">    </span>
+<span class="sd">    Converts a DGL heterogeneous graph to PyTorch Geometric format while preserving</span>
+<span class="sd">    node features and edge indices.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        dgl_graph: DGL heterogeneous graph</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        HeteroData: Converted PyG heterogeneous graph with:</span>
+<span class="sd">            - Node features (x) initialized as zero tensors</span>
+<span class="sd">            - Edge indices preserved for each edge type</span>
+<span class="sd">            - Node mapping from DGL to PyG format</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pyg_data</span> <span class="o">=</span> <span class="n">HeteroData</span><span class="p">()</span>
+    
+    <span class="k">for</span> <span class="n">ntype</span> <span class="ow">in</span> <span class="n">dgl_graph</span><span class="o">.</span><span class="n">ntypes</span><span class="p">:</span>
+        <span class="n">num_nodes</span> <span class="o">=</span> <span class="n">dgl_graph</span><span class="o">.</span><span class="n">num_nodes</span><span class="p">(</span><span class="n">ntype</span><span class="p">)</span>
+        <span class="n">pyg_data</span><span class="p">[</span><span class="n">ntype</span><span class="p">]</span><span class="o">.</span><span class="n">x</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_nodes</span><span class="p">,</span> <span class="mi">768</span><span class="p">))</span>
+        <span class="n">pyg_data</span><span class="p">[</span><span class="n">ntype</span><span class="p">]</span><span class="o">.</span><span class="n">dgl_to_pyg</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">num_nodes</span><span class="p">)</span>
+    
+    <span class="k">for</span> <span class="n">etype</span> <span class="ow">in</span> <span class="n">dgl_graph</span><span class="o">.</span><span class="n">canonical_etypes</span><span class="p">:</span>
+        <span class="n">src_type</span><span class="p">,</span> <span class="n">rel_type</span><span class="p">,</span> <span class="n">dst_type</span> <span class="o">=</span> <span class="n">etype</span>
+        <span class="n">src</span><span class="p">,</span> <span class="n">dst</span> <span class="o">=</span> <span class="n">dgl_graph</span><span class="o">.</span><span class="n">edges</span><span class="p">(</span><span class="n">etype</span><span class="o">=</span><span class="n">etype</span><span class="p">)</span>
+        <span class="n">edge_index</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">pyg_data</span><span class="p">[</span><span class="n">src_type</span><span class="p">,</span> <span class="n">rel_type</span><span class="p">,</span> <span class="n">dst_type</span><span class="p">]</span><span class="o">.</span><span class="n">edge_index</span> <span class="o">=</span> <span class="n">edge_index</span>
+    
+    <span class="k">return</span> <span class="n">pyg_data</span>
+
+<span class="k">def</span> <span class="nf">sample_subgraph</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">seed_nid</span><span class="p">,</span> <span class="n">num_hops</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">fanout</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sample subgraph based on neighbor sampling&quot;&quot;&quot;</span>
+    <span class="n">nodes</span> <span class="o">=</span> <span class="p">{</span><span class="n">ntype</span><span class="p">:</span> <span class="p">[]</span> <span class="k">for</span> <span class="n">ntype</span> <span class="ow">in</span> <span class="n">g</span><span class="o">.</span><span class="n">ntypes</span><span class="p">}</span>
+    <span class="n">nodes</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">seed_nid</span><span class="p">)</span>
+    
+    <span class="k">for</span> <span class="n">hop</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_hops</span><span class="p">):</span>
+        <span class="n">current_nodes</span> <span class="o">=</span> <span class="p">{</span><span class="n">ntype</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">nodes</span><span class="p">[</span><span class="n">ntype</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span> 
+                        <span class="k">for</span> <span class="n">ntype</span> <span class="ow">in</span> <span class="n">nodes</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">nodes</span><span class="p">[</span><span class="n">ntype</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">}</span>
+        
+        <span class="k">for</span> <span class="n">etype</span> <span class="ow">in</span> <span class="n">g</span><span class="o">.</span><span class="n">canonical_etypes</span><span class="p">:</span>
+            <span class="n">src_type</span><span class="p">,</span> <span class="n">rel_type</span><span class="p">,</span> <span class="n">dst_type</span> <span class="o">=</span> <span class="n">etype</span>
+            <span class="k">if</span> <span class="n">dst_type</span> <span class="ow">in</span> <span class="n">current_nodes</span><span class="p">:</span>
+                <span class="n">frontier</span> <span class="o">=</span> <span class="n">dgl</span><span class="o">.</span><span class="n">sampling</span><span class="o">.</span><span class="n">sample_neighbors</span><span class="p">(</span>
+                    <span class="n">g</span><span class="p">,</span>
+                    <span class="p">{</span><span class="n">dst_type</span><span class="p">:</span> <span class="n">current_nodes</span><span class="p">[</span><span class="n">dst_type</span><span class="p">]},</span>
+                    <span class="n">fanout</span><span class="p">,</span>
+                    <span class="n">edge_dir</span><span class="o">=</span><span class="s2">&quot;in&quot;</span><span class="p">,</span>
+                    <span class="n">replace</span><span class="o">=</span><span class="kc">False</span>
+                <span class="p">)</span>
+                <span class="n">src_nodes</span> <span class="o">=</span> <span class="n">frontier</span><span class="o">.</span><span class="n">edges</span><span class="p">(</span><span class="n">etype</span><span class="o">=</span><span class="n">etype</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">src_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
+                    <span class="n">nodes</span><span class="p">[</span><span class="n">src_type</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">nodes</span><span class="p">[</span><span class="n">src_type</span><span class="p">]</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">src_nodes</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+    
+    <span class="k">for</span> <span class="n">ntype</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
+        <span class="n">nodes</span><span class="p">[</span><span class="n">ntype</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">nodes</span><span class="p">[</span><span class="n">ntype</span><span class="p">]))</span>
+    
+    <span class="n">subg</span> <span class="o">=</span> <span class="n">dgl</span><span class="o">.</span><span class="n">node_subgraph</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">nodes</span><span class="p">)</span>
+    
+    <span class="n">pyg_graph</span> <span class="o">=</span> <span class="n">dgl_to_pyg</span><span class="p">(</span><span class="n">subg</span><span class="p">)</span>
+    
+    <span class="k">for</span> <span class="n">ntype</span> <span class="ow">in</span> <span class="n">pyg_graph</span><span class="o">.</span><span class="n">node_types</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">pyg_graph</span><span class="p">[</span><span class="n">ntype</span><span class="p">],</span> <span class="s1">&#39;x&#39;</span><span class="p">):</span>
+            <span class="n">num_nodes</span> <span class="o">=</span> <span class="n">pyg_graph</span><span class="p">[</span><span class="n">ntype</span><span class="p">]</span><span class="o">.</span><span class="n">num_nodes</span>
+            <span class="n">pyg_graph</span><span class="p">[</span><span class="n">ntype</span><span class="p">]</span><span class="o">.</span><span class="n">x</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_nodes</span><span class="p">,</span> <span class="mi">768</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">pyg_graph</span>
+
+<div class="viewcode-block" id="higpt_prompt_generation"><a class="viewcode-back" href="../../../generated/ggfm.data.higpt_prompt_generation.html#ggfm.data.higpt_prompt_generation">[docs]</a><span class="k">def</span> <span class="nf">higpt_prompt_generation</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Main function to execute all dataset processing steps.</span>
+<span class="sd">    </span>
+<span class="sd">    Performs three main steps:</span>
+<span class="sd">    1. Assigns paper labels based on L2 level field connections</span>
+<span class="sd">    2. Generates node and edge type embeddings using BERT</span>
+<span class="sd">    3. Prepares training data by:</span>
+<span class="sd">        - Sampling subgraphs</span>
+<span class="sd">        - Creating conversations</span>
+<span class="sd">        - Saving in required format</span>
+<span class="sd">    </span>
+<span class="sd">    The processed data is saved in the following structure:</span>
+<span class="sd">    - Labeled graph: ggfm/datasets/labeled_field_hg.bin</span>
+<span class="sd">    - Label mapping: ggfm/datasets/label_to_field.json</span>
+<span class="sd">    - Type embeddings: ggfm/models/meta_hgt/meta_dict/oag/</span>
+<span class="sd">    - Training data: ggfm/datasets/stage2_data/OAG-all/</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Starting dataset processing...&quot;</span><span class="p">)</span>
+    
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">=== Step 1: Assigning paper labels ===&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Loading original dataset...&quot;</span><span class="p">)</span>
+    <span class="n">original_graph_path</span> <span class="o">=</span> <span class="s2">&quot;ggfm/datasets/new_graph_CS.pk&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">original_graph_path</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">original_g</span> <span class="o">=</span> <span class="n">renamed_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Loading processed dataset...&quot;</span><span class="p">)</span>
+    <span class="n">processed_graph_path</span> <span class="o">=</span> <span class="s2">&quot;ggfm/datasets/reduced_hg.bin&quot;</span>
+    <span class="n">processed_glist</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">load_graphs</span><span class="p">(</span><span class="n">processed_graph_path</span><span class="p">)</span>
+    <span class="n">processed_g</span> <span class="o">=</span> <span class="n">processed_glist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">field_features</span> <span class="o">=</span> <span class="n">original_g</span><span class="o">.</span><span class="n">node_feature</span><span class="p">[</span><span class="s1">&#39;field&#39;</span><span class="p">]</span>
+    <span class="n">paper_field_edges</span> <span class="o">=</span> <span class="n">original_g</span><span class="o">.</span><span class="n">edge_list</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">][</span><span class="s1">&#39;field&#39;</span><span class="p">]</span>
+    <span class="n">l2_edges</span> <span class="o">=</span> <span class="n">paper_field_edges</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;rev_PF_in_L2&#39;</span><span class="p">,</span> <span class="p">{})</span>
+    
+
+    <span class="n">l2_fields</span> <span class="o">=</span> <span class="n">field_features</span><span class="p">[</span><span class="n">field_features</span><span class="p">[</span><span class="s1">&#39;attr&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;L2&#39;</span><span class="p">]</span>
+
+    <span class="n">num_papers</span> <span class="o">=</span> <span class="n">processed_g</span><span class="o">.</span><span class="n">num_nodes</span><span class="p">(</span><span class="s1">&#39;paper&#39;</span><span class="p">)</span>
+    <span class="n">paper_labels</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">num_papers</span><span class="p">,),</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">long</span><span class="p">)</span>
+    <span class="n">unlabeled_papers</span> <span class="o">=</span> <span class="p">[]</span>
+    
+    <span class="k">for</span> <span class="n">paper_id</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_papers</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">paper_id</span> <span class="ow">in</span> <span class="n">l2_edges</span><span class="p">:</span>
+            <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">l2_edges</span><span class="p">[</span><span class="n">paper_id</span><span class="p">]</span> <span class="k">if</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">l2_fields</span><span class="o">.</span><span class="n">index</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">fields</span><span class="p">:</span>
+                <span class="n">chosen_field</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span>
+                <span class="n">field_label</span> <span class="o">=</span> <span class="n">l2_fields</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">chosen_field</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">]</span>
+                <span class="n">paper_labels</span><span class="p">[</span><span class="n">paper_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">field_label</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">unlabeled_papers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">paper_id</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">unlabeled_papers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">paper_id</span><span class="p">)</span>
+
+    <span class="n">processed_g</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">paper_labels</span>
+
+    <span class="n">labeled_graph_path</span> <span class="o">=</span> <span class="s2">&quot;ggfm/datasets/labeled_field_hg.bin&quot;</span>
+    <span class="n">save_graphs</span><span class="p">(</span><span class="n">labeled_graph_path</span><span class="p">,</span> <span class="p">[</span><span class="n">processed_g</span><span class="p">])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved labeled graph to: </span><span class="si">{</span><span class="n">labeled_graph_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    
+
+    <span class="n">label_to_field</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">unique_labels</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">l2_fields</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+    <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">unique_labels</span><span class="p">:</span>
+        <span class="n">fields_with_label</span> <span class="o">=</span> <span class="n">l2_fields</span><span class="p">[</span><span class="n">l2_fields</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="n">label</span><span class="p">]</span>
+        <span class="n">field_infos</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">field_info</span> <span class="ow">in</span> <span class="n">fields_with_label</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="n">field_infos</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s1">&#39;field_id&#39;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">field_info</span><span class="o">.</span><span class="n">name</span><span class="p">),</span>
+                <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="n">field_info</span><span class="p">[</span><span class="s1">&#39;name&#39;</span><span class="p">],</span>
+                <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="n">field_info</span><span class="p">[</span><span class="s1">&#39;type&#39;</span><span class="p">],</span>
+                <span class="s1">&#39;attr&#39;</span><span class="p">:</span> <span class="n">field_info</span><span class="p">[</span><span class="s1">&#39;attr&#39;</span><span class="p">]</span>
+            <span class="p">})</span>
+        <span class="n">label_to_field</span><span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">label</span><span class="p">)]</span> <span class="o">=</span> <span class="n">field_infos</span>
+
+    <span class="n">label_to_field</span><span class="p">[</span><span class="s1">&#39;-1&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[{</span>
+        <span class="s1">&#39;field_id&#39;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+        <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;Unlabeled&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;special&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;attr&#39;</span><span class="p">:</span> <span class="s1">&#39;none&#39;</span>
+    <span class="p">}]</span>
+
+    <span class="n">mapping_path</span> <span class="o">=</span> <span class="s2">&quot;ggfm/datasets/label_to_field.json&quot;</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">mapping_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">label_to_field</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved label mapping to: </span><span class="si">{</span><span class="n">mapping_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">=== Step 2: Generating node and edge type embeddings ===&quot;</span><span class="p">)</span>
+    <span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cuda:0&quot;</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="s2">&quot;cpu&quot;</span><span class="p">)</span>
+    
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Loading sentence-bert model...&quot;</span><span class="p">)</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">SentenceTransformer</span><span class="p">(</span><span class="s1">&#39;bert-base-nli-mean-tokens&#39;</span><span class="p">)</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Loading graph data...&quot;</span><span class="p">)</span>
+    <span class="n">graph_list</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">load_graphs</span><span class="p">(</span><span class="n">labeled_graph_path</span><span class="p">)</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">graph_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">save_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;ggfm/models/meta_hgt/meta_dict/oag/&quot;</span><span class="p">)</span>
+    <span class="n">save_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">node_type_embeddings</span> <span class="o">=</span> <span class="n">generate_node_type_embeddings</span><span class="p">(</span><span class="n">g</span><span class="o">.</span><span class="n">ntypes</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">node_type_embeddings</span><span class="p">,</span> <span class="n">save_dir</span> <span class="o">/</span> <span class="s2">&quot;node_type.pt&quot;</span><span class="p">)</span>
+
+    <span class="n">edge_type_embeddings</span> <span class="o">=</span> <span class="n">generate_edge_type_embeddings</span><span class="p">(</span><span class="n">g</span><span class="o">.</span><span class="n">canonical_etypes</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">edge_type_embeddings</span><span class="p">,</span> <span class="n">save_dir</span> <span class="o">/</span> <span class="s2">&quot;edge_type.pt&quot;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">=== Step 3: Preparing training data ===&quot;</span><span class="p">)</span>
+
+    <span class="n">base_dir0</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">&quot;ggfm/datasets/stage2_data/OAG-all&quot;</span><span class="p">)</span>
+    <span class="n">base_dir</span> <span class="o">=</span> <span class="n">base_dir0</span> <span class="o">/</span> <span class="s2">&quot;instruct_ds_oag&quot;</span>
+    <span class="k">for</span> <span class="n">split</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;train&#39;</span><span class="p">,</span> <span class="s1">&#39;test&#39;</span><span class="p">,</span> <span class="s1">&#39;val&#39;</span><span class="p">]:</span>
+        <span class="p">(</span><span class="n">base_dir</span> <span class="o">/</span> <span class="s1">&#39;ann&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">(</span><span class="n">base_dir</span> <span class="o">/</span> <span class="s1">&#39;graph_data&#39;</span> <span class="o">/</span> <span class="n">split</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">&quot;ggfm/datasets/graph_node_name.pkl&quot;</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">node_names</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="n">node_names</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="n">splits</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">split_name</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;train&#39;</span><span class="p">,</span> <span class="s1">&#39;test&#39;</span><span class="p">,</span> <span class="s1">&#39;val&#39;</span><span class="p">]:</span>
+        <span class="n">split_file</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;oag_</span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s2">_pairs.pkl&quot;</span>  
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ggfm/datasets/</span><span class="si">{</span><span class="n">split_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="s1">&#39;rb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">splits</span><span class="p">[</span><span class="n">split_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">split_name</span><span class="p">,</span> <span class="n">paper_ids</span> <span class="ow">in</span> <span class="n">splits</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Processing </span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s2"> split...&quot;</span><span class="p">)</span>
+        <span class="n">json_data</span> <span class="o">=</span> <span class="p">[]</span>
+        
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">paper_id</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">tqdm</span><span class="p">(</span><span class="n">paper_ids</span><span class="p">)):</span>
+
+            <span class="n">pyg_graph</span> <span class="o">=</span> <span class="n">sample_subgraph</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">paper_id</span><span class="p">)</span>
+
+            <span class="n">graph_file</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;OAG_</span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">paper_id</span><span class="si">}</span><span class="s2">.pt&quot;</span>
+            <span class="n">graph_path</span> <span class="o">=</span> <span class="n">base_dir</span> <span class="o">/</span> <span class="s1">&#39;graph_data&#39;</span> <span class="o">/</span> <span class="n">split_name</span> <span class="o">/</span> <span class="n">graph_file</span>
+            <span class="n">torch</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pyg_graph</span><span class="p">,</span> <span class="n">graph_path</span><span class="p">)</span>
+
+            <span class="n">label</span> <span class="o">=</span> <span class="n">g</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">][</span><span class="n">paper_id</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            
+            <span class="n">entry</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;OAG_</span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">paper_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;graph_id&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;OAG_</span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">paper_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;graph&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;node_idx&quot;</span><span class="p">:</span> <span class="n">paper_id</span><span class="p">,</span>
+                    <span class="s2">&quot;graph_idx&quot;</span><span class="p">:</span> <span class="n">idx</span><span class="p">,</span>
+                    <span class="s2">&quot;graph&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;instruct_ds_oag/graph_data/</span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">graph_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;keys_order&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;paper&quot;</span><span class="p">,</span> <span class="s2">&quot;author&quot;</span><span class="p">,</span> <span class="s2">&quot;affiliation&quot;</span><span class="p">,</span> <span class="s2">&quot;venue&quot;</span><span class="p">],</span>
+                    <span class="s2">&quot;label&quot;</span><span class="p">:</span> <span class="n">label</span>
+                <span class="p">},</span>
+                <span class="s2">&quot;conversations&quot;</span><span class="p">:</span> <span class="n">create_conversation</span><span class="p">(</span><span class="n">pyg_graph</span><span class="p">,</span> <span class="n">paper_id</span><span class="p">,</span> <span class="n">node_names</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="n">json_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+
+        <span class="n">json_file</span> <span class="o">=</span> <span class="n">base_dir</span> <span class="o">/</span> <span class="s1">&#39;ann&#39;</span> <span class="o">/</span> <span class="sa">f</span><span class="s1">&#39;OAG_</span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s1">_std_0_</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">paper_ids</span><span class="p">)</span><span class="si">}</span><span class="s1">.json&#39;</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">json_file</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">json_data</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ensure_ascii</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Completed </span><span class="si">{</span><span class="n">split_name</span><span class="si">}</span><span class="s2"> split processing, total samples: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">paper_ids</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Dataset processing completed!&quot;</span><span class="p">)</span></div>
+
+<span class="k">def</span> <span class="nf">generate_node_type_embeddings</span><span class="p">(</span><span class="n">node_types</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate embeddings for node types&quot;&quot;&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Generating node type embeddings...&quot;</span><span class="p">)</span>
+    <span class="n">embeddings</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">node_type</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">node_types</span><span class="p">):</span>
+        <span class="n">descriptions</span> <span class="o">=</span> <span class="n">generate_node_descriptions</span><span class="p">(</span><span class="n">node_type</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">descriptions</span><span class="p">:</span>
+            <span class="n">embeddings</span><span class="p">[</span><span class="n">node_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">get_embedding</span><span class="p">(</span><span class="n">descriptions</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">embeddings</span>
+
+<span class="k">def</span> <span class="nf">generate_edge_type_embeddings</span><span class="p">(</span><span class="n">edge_types</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate embeddings for edge types&quot;&quot;&quot;</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Generating edge type embeddings...&quot;</span><span class="p">)</span>
+    <span class="n">embeddings</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">edge_type</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">edge_types</span><span class="p">):</span>
+        <span class="n">descriptions</span> <span class="o">=</span> <span class="n">generate_edge_descriptions</span><span class="p">(</span><span class="n">edge_type</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">descriptions</span><span class="p">:</span>
+            <span class="n">embeddings</span><span class="p">[</span><span class="n">edge_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">get_embedding</span><span class="p">(</span><span class="n">descriptions</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">embeddings</span>
+
+<span class="k">def</span> <span class="nf">generate_node_descriptions</span><span class="p">(</span><span class="n">node_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate descriptions for node types&quot;&quot;&quot;</span>
+    <span class="n">descriptions</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;paper&#39;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;This node represents a paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a paper node&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;A paper node in the graph&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This node is a paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;The node type is paper&quot;</span>
+        <span class="p">],</span>
+        <span class="s1">&#39;author&#39;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;This node represents an author&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is an author node&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;An author node in the graph&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This node is an author&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;The node type is author&quot;</span>
+        <span class="p">],</span>
+        <span class="s1">&#39;affiliation&#39;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;This node represents an affiliation&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is an affiliation node&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;An affiliation node in the graph&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This node is an affiliation&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;The node type is affiliation&quot;</span>
+        <span class="p">],</span>
+        <span class="s1">&#39;venue&#39;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="s2">&quot;This node represents a venue&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a venue node&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;A venue node in the graph&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This node is a venue&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;The node type is venue&quot;</span>
+        <span class="p">]</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">descriptions</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">node_type</span><span class="p">,</span> <span class="p">[])</span>
+
+<span class="k">def</span> <span class="nf">generate_edge_descriptions</span><span class="p">(</span><span class="n">edge_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate natural language descriptions for edge types.</span>
+<span class="sd">    </span>
+<span class="sd">    Provides multiple paraphrased descriptions for each edge type in the</span>
+<span class="sd">    heterogeneous academic graph.</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        edge_type (tuple): Edge type as (source_type, relation, target_type)</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of string descriptions for the edge type. Returns empty list</span>
+<span class="sd">            if edge type is not recognized.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">descriptions</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="p">(</span><span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;cites&#39;</span><span class="p">,</span> <span class="s1">&#39;paper&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;This paper cites that paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;A paper cites another paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Paper to paper citation&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a citation relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;A citation between papers&quot;</span>
+        <span class="p">],</span>
+        <span class="p">(</span><span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;cited by&#39;</span><span class="p">,</span> <span class="s1">&#39;paper&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;This paper is cited by that paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;A paper is cited by another paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Paper to paper citation&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a citation relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;A citation between papers&quot;</span>
+        <span class="p">],</span>
+        <span class="p">(</span><span class="s1">&#39;author&#39;</span><span class="p">,</span> <span class="s1">&#39;writes&#39;</span><span class="p">,</span> <span class="s1">&#39;paper&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;Author writes paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a writing relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Author to paper writing&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Writing relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Author writes&quot;</span>
+        <span class="p">],</span>
+        <span class="p">(</span><span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;is writen by&#39;</span><span class="p">,</span> <span class="s1">&#39;author&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;Paper is written by author&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Paper to author relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a writing relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Paper has author as writer&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Author writes this paper&quot;</span>
+        <span class="p">],</span>
+        <span class="p">(</span><span class="s1">&#39;author&#39;</span><span class="p">,</span> <span class="s1">&#39;is affiliated with&#39;</span><span class="p">,</span> <span class="s1">&#39;affiliation&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;Author is affiliated with affiliation&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Author to affiliation relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is an affiliation relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Author belongs to affiliation&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Affiliation has this author&quot;</span>
+        <span class="p">],</span>
+        <span class="p">(</span><span class="s1">&#39;affiliation&#39;</span><span class="p">,</span> <span class="s1">&#39;employs&#39;</span><span class="p">,</span> <span class="s1">&#39;author&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;Affiliation employs author&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Affiliation to author relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is an employment relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Affiliation has this author&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Author belongs to affiliation&quot;</span>
+        <span class="p">],</span>
+        <span class="p">(</span><span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;published in&#39;</span><span class="p">,</span> <span class="s1">&#39;venue&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;Paper is published in venue&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Paper to venue relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a publication relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Paper appears in venue&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Venue contains this paper&quot;</span>
+        <span class="p">],</span>
+        <span class="p">(</span><span class="s1">&#39;venue&#39;</span><span class="p">,</span> <span class="s1">&#39;publishes&#39;</span><span class="p">,</span> <span class="s1">&#39;paper&#39;</span><span class="p">):</span> <span class="p">[</span>
+            <span class="s2">&quot;Venue publishes paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Venue to paper relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;This is a publication relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Venue contains paper&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Paper appears in venue&quot;</span>
+        <span class="p">]</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">descriptions</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">edge_type</span><span class="p">,</span> <span class="p">[])</span>
+
+<span class="k">def</span> <span class="nf">get_embedding</span><span class="p">(</span><span class="n">descriptions</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get embedding vector for descriptions&quot;&quot;&quot;</span>
+    <span class="n">embeddings</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">descriptions</span><span class="p">,</span> <span class="n">convert_to_tensor</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">embeddings</span> <span class="o">=</span> <span class="n">embeddings</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">embeddings</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span>
+
+<span class="k">def</span> <span class="nf">create_conversation</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">paper_id</span><span class="p">,</span> <span class="n">node_names</span><span class="p">,</span> <span class="n">label</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Create conversation content for a paper node.</span>
+<span class="sd">    </span>
+<span class="sd">    Generates a structured conversation with:</span>
+<span class="sd">    1. A prompt describing the graph structure</span>
+<span class="sd">    2. Paper-specific information (title, authors)</span>
+<span class="sd">    3. A question about paper category</span>
+<span class="sd">    4. The ground truth label</span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        g (HeteroData): PyG heterogeneous graph</span>
+<span class="sd">        paper_id (int): ID of target paper node</span>
+<span class="sd">        node_names (dict): Mapping of node IDs to actual names</span>
+<span class="sd">        label (int): Ground truth label for paper category</span>
+<span class="sd">        </span>
+<span class="sd">    Returns:</span>
+<span class="sd">        list: List of conversation turns as dictionaries with:</span>
+<span class="sd">            - &quot;from&quot;: Speaker identifier (&quot;human&quot; or &quot;gpt&quot;)</span>
+<span class="sd">            - &quot;value&quot;: Content of the turn</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">paper_title</span> <span class="o">=</span> <span class="n">node_names</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">][</span><span class="n">paper_id</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;paper&#39;</span> <span class="ow">in</span> <span class="n">node_names</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;Paper_</span><span class="si">{</span><span class="n">paper_id</span><span class="si">}</span><span class="s2">&quot;</span>
+
+    <span class="n">authors</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="p">(</span><span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;is writen by&#39;</span><span class="p">,</span> <span class="s1">&#39;author&#39;</span><span class="p">)</span> <span class="ow">in</span> <span class="n">g</span><span class="o">.</span><span class="n">edge_types</span><span class="p">:</span>
+        <span class="n">edge_index</span> <span class="o">=</span> <span class="n">g</span><span class="p">[</span><span class="s1">&#39;paper&#39;</span><span class="p">,</span> <span class="s1">&#39;is writen by&#39;</span><span class="p">,</span> <span class="s1">&#39;author&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">edge_index</span>
+        <span class="n">paper_idx</span> <span class="o">=</span> <span class="mi">0</span>  
+        <span class="n">author_mask</span> <span class="o">=</span> <span class="n">edge_index</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">paper_idx</span>
+        <span class="n">author_ids</span> <span class="o">=</span> <span class="n">edge_index</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="n">author_mask</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+        <span class="n">authors</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">node_names</span><span class="p">[</span><span class="s1">&#39;author&#39;</span><span class="p">][</span><span class="n">aid</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;author&#39;</span> <span class="ow">in</span> <span class="n">node_names</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;Author_</span><span class="si">{</span><span class="n">aid</span><span class="si">}</span><span class="s2">&quot;</span> 
+                      <span class="k">for</span> <span class="n">aid</span> <span class="ow">in</span> <span class="n">author_ids</span><span class="p">])</span>
+
+    <span class="n">prompt</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;Given a heterogeneous academic network graph about computer science, there are four types of nodes, &quot;</span>
+        <span class="s2">&quot;namely: paper, author, affiliation, venue. The relationships (meta paths) between different nodes include: &quot;</span>
+        <span class="s2">&quot;[(&#39;affiliation&#39;, &#39;employs&#39;, &#39;author&#39;), (&#39;author&#39;, &#39;is affiliated with&#39;, &#39;affiliation&#39;), &quot;</span>
+        <span class="s2">&quot;(&#39;author&#39;, &#39;writes&#39;, &#39;paper&#39;), (&#39;paper&#39;, &#39;cited by&#39;, &#39;paper&#39;), (&#39;paper&#39;, &#39;cites&#39;, &#39;paper&#39;), &quot;</span>
+        <span class="s2">&quot;(&#39;paper&#39;, &#39;is writen by&#39;, &#39;author&#39;), (&#39;paper&#39;, &#39;published in&#39;, &#39;venue&#39;), (&#39;venue&#39;, &#39;publishes&#39;, &#39;paper&#39;)]. &quot;</span>
+        <span class="s2">&quot;By performing random sampling of 2-hop 10 neighbors centered on the target paper node, a heterogeneous &quot;</span>
+        <span class="s2">&quot;subgraph is obtained. In the subgraph, </span><span class="se">\&quot;</span><span class="s2">paper</span><span class="se">\&quot;</span><span class="s2"> nodes: &lt;graph&gt;, where the 0-th node is the central node &quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;that represents a paper with the following information: </span><span class="se">\n</span><span class="s2">Title: </span><span class="si">{</span><span class="n">paper_title</span><span class="si">}</span><span class="s2"> </span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">&quot;Published author lists: </span><span class="si">{</span><span class="n">authors</span><span class="si">}</span><span class="s2"> </span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;</span><span class="se">\&quot;</span><span class="s2">author</span><span class="se">\&quot;</span><span class="s2"> nodes: &lt;graph&gt;; </span><span class="se">\&quot;</span><span class="s2">affiliation</span><span class="se">\&quot;</span><span class="s2"> nodes: &lt;graph&gt;; </span><span class="se">\&quot;</span><span class="s2">venue</span><span class="se">\&quot;</span><span class="s2"> nodes: &lt;graph&gt;. </span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Question: Which of the following areas does this paper belong to: one of the 11 categories &quot;</span>
+        <span class="s2">&quot;represented by integer labels ranging from 0 to 10? </span><span class="se">\n</span><span class="s2">&quot;</span>
+        <span class="s2">&quot;Give likely categories directly. &quot;</span>
+    <span class="p">)</span>
+    
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s2">&quot;from&quot;</span><span class="p">:</span> <span class="s2">&quot;human&quot;</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">},</span>
+        <span class="p">{</span><span class="s2">&quot;from&quot;</span><span class="p">:</span> <span class="s2">&quot;gpt&quot;</span><span class="p">,</span> <span class="s2">&quot;value&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">label</span><span class="p">)}</span>
+    <span class="p">]</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">higpt_prompt_generation</span><span class="p">()</span> 
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, BUPT-GAMMA LAB.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
